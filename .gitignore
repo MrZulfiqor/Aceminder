@@ -1,0 +1,6 @@
+.env
+server.log
+*.log
+__pycache__/
+aceminder.db
+aceminder.db-*

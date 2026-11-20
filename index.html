@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070b1a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="Aceminder.png">
+  <script src="device.js"></script>
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Aceminder turns a topic, your notes, or a PDF into a practice test in the formats and difficulty you choose.">
+  <title>Aceminder — Revision, your way</title>
+  <link rel="icon" type="image/png" href="Aceminder.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="i18n.js" defer></script>
+  <script src="i18n-uz-ru.js" defer></script>
+  <script src="i18n-es-de-fr.js" defer></script>
+  <script src="i18n-game.js" defer></script>
+  <script src="i18n-account.js" defer></script>
+  <script src="i18n-owl.js" defer></script>
+  <script src="owl.js" defer></script>
+  <script src="generator.js" defer></script>
+  <script src="game.js" defer></script>
+  <script src="achievements.js" defer></script>
+  <script src="account.js" defer></script>
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true">
+    <span class="blob blob--gold"></span>
+    <span class="blob blob--violet"></span>
+    <span class="blob blob--cyan"></span>
+    <span class="grid-glow"></span>
+  </div>
+  <div class="scroll-progress" id="scroll-progress" aria-hidden="true"></div>
+  <a class="skip-link" href="#main" data-i18n="skip">Skip to content</a>
+
+  <header class="site-header" id="site-header">
+    <div class="header-inner shell">
+      <a class="brand" href="#top" data-i18n-aria="brand.home" aria-label="Aceminder home">
+        <img src="Aceminder.png" alt="" width="40" height="40">
+        <span>Aceminder</span>
+      </a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="#generator" data-i18n="nav.builder">Question builder</a>
+        <a href="#how-it-works" data-i18n="nav.how">How it works</a>
+        <a href="#level-up" data-i18n="nav.levelup">Level up</a>
+        <a href="#leaderboard" data-i18n="board.eyebrow">Leaderboard</a>
+      </nav>
+      <div class="header-tools">
+        <a class="hud" href="#level-up" id="hud">
+          <span class="hud-streak" id="hud-streak" title="Day streak">
+            <span class="hud-flame" aria-hidden="true">🔥</span><strong id="hud-streak-count">0</strong>
+          </span>
+          <span class="hud-level" id="hud-level" title="Your level">
+            <span class="hud-level-badge" id="hud-level-num">1</span>
+            <span class="hud-xp" aria-hidden="true"><span class="hud-xp-fill" id="hud-xp-fill"></span></span>
+          </span>
+        </a>
+
+        <button class="account-button" id="account-button" type="button" aria-label="Sign in">
+          <span class="account-avatar" id="account-avatar" aria-hidden="true">👤</span>
+          <span class="account-name" id="account-name">Sign in</span>
+        </button>
+
+        <div class="lang-switcher" id="lang-switcher">
+          <button class="lang-button" id="lang-button" type="button" aria-haspopup="menu" aria-expanded="false" data-i18n-aria="ui.language" aria-label="Language">
+            <span class="lang-flag" id="lang-current-flag" aria-hidden="true"></span>
+            <span class="lang-current" id="lang-current">English</span>
+            <svg class="lang-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="lang-menu" id="lang-menu" role="menu" hidden></div>
+        </div>
+
+        <button class="key-pill" id="open-key-dialog" type="button">
+          <span class="key-pill-dot" aria-hidden="true"></span>
+          <span id="key-pill-label">Add Gemini key</span>
+        </button>
+        <a class="nav-cta" href="#generator" data-i18n="nav.cta">Try the builder</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero shell" id="top" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow rise-in"><span class="pulse-dot" aria-hidden="true"></span><span data-i18n="hero.eyebrow">AI study builder</span></p>
+        <h1 class="rise-in delay-1" id="hero-title">
+          <span class="hero-brand">Aceminder.</span>
+          <span data-i18n="hero.titleA">Revision,</span> <span class="gradient-text" data-i18n="hero.titleB">your way.</span>
+        </h1>
+        <p class="hero-quest rise-in delay-2">
+          <span data-i18n="hero.quest">Today’s quest:</span>
+          <span class="hero-rotator" id="hero-rotator">Biology</span>
+        </p>
+        <p class="hero-description rise-in delay-2" data-i18n="hero.desc">Choose a topic, add your notes or a PDF, and get a practice test shaped around the formats and difficulty that work for you.</p>
+        <div class="hero-actions rise-in delay-3">
+          <a class="button button--gold button--lg" href="#generator">
+            <span data-i18n="hero.cta1">Build a practice test</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+          </a>
+          <a class="button button--ghost button--lg" href="#how-it-works" data-i18n="hero.cta2">See how it works</a>
+        </div>
+        <dl class="hero-stats rise-in delay-3">
+          <div><dt>7</dt><dd data-i18n="hero.stat1">difficulty levels</dd></div>
+          <div><dt>8</dt><dd data-i18n="hero.stat2">question formats</dd></div>
+          <div><dt>6</dt><dd data-i18n="hero.stat4">languages</dd></div>
+          <div><dt>PDF</dt><dd data-i18n="hero.stat3">&amp; image aware</dd></div>
+        </dl>
+        <p class="hero-note rise-in delay-3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span data-i18n="hero.note">Your own Gemini key · kept in this browser.</span></p>
+      </div>
+
+      <div class="hero-art rise-in delay-2" id="hero-art">
+        <div class="hero-ring" aria-hidden="true"></div>
+        <div class="hero-owl" id="hero-owl" aria-hidden="true"></div>
+        <div class="float-chip float-chip--xp" aria-hidden="true"><span class="float-chip-icon">⚡</span>+120 XP</div>
+        <div class="float-chip float-chip--streak" aria-hidden="true"><span class="float-chip-icon">🔥</span>7</div>
+        <div class="float-chip float-chip--level" aria-hidden="true"><span class="float-chip-icon">🏆</span>Lv 5</div>
+        <article class="study-preview" aria-label="Illustrative Aceminder practice test preview">
+          <div class="preview-top">
+            <div class="preview-brand">
+              <img src="Aceminder.png" alt="">
+              <div>
+                <span class="preview-kicker" data-i18n="prev.kicker">Practice test preview</span>
+                <span class="preview-brand-name">Aceminder</span>
+              </div>
+            </div>
+            <span class="preview-concept"><span class="pulse-dot" aria-hidden="true"></span><span data-i18n="prev.concept">AI draft</span></span>
+          </div>
+          <div class="preview-topic">
+            <p class="preview-field-label" data-i18n="prev.topicLabel">Your topic</p>
+            <h2 data-i18n="prev.topic">Cell structure</h2>
+            <p data-i18n="prev.topicSub">Biology · Chapter 4</p>
+          </div>
+          <div class="preview-settings">
+            <div class="preview-setting">
+              <span class="preview-field-label" data-i18n="prev.source">Study material</span>
+              <strong data-i18n="prev.sourceValue">Biology notes.pdf · pages 8–16</strong>
+            </div>
+            <div class="preview-setting">
+              <span class="preview-field-label" data-i18n="prev.questions">Questions</span>
+              <strong data-i18n="prev.questionsValue">12 questions</strong>
+            </div>
+            <div class="preview-setting">
+              <span class="preview-field-label" data-i18n="prev.difficulty">Difficulty</span>
+              <strong data-i18n="prev.difficultyValue">Medium</strong>
+            </div>
+          </div>
+          <div class="preview-formats">
+            <span class="format-example" data-i18n="prev.mc">Multiple choice</span>
+            <span class="format-example" data-i18n="prev.short">Short answer</span>
+          </div>
+          <div class="preview-sample">
+            <div class="preview-sample-heading">
+              <span class="preview-field-label" data-i18n="prev.sample">Sample question</span>
+              <span class="preview-counter">01 / 12</span>
+            </div>
+            <p class="sample-prompt" data-i18n="prev.samplePrompt">Which cell structure releases usable energy?</p>
+            <div class="sample-answers">
+              <span><b>A</b><span data-i18n="prev.a">Nucleus</span></span>
+              <span class="is-right"><b>B</b><span data-i18n="prev.b">Mitochondrion</span></span>
+              <span><b>C</b><span data-i18n="prev.c">Cell membrane</span></span>
+              <span><b>D</b><span data-i18n="prev.d">Ribosome</span></span>
+            </div>
+          </div>
+          <div class="preview-footer" data-i18n="prev.footer">Illustrative example · no test generated yet</div>
+        </article>
+      </div>
+    </section>
+
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track">
+        <span data-i18n="chip.mc">Multiple choice</span><span data-i18n="chip.short">Short answer</span><span data-i18n="chip.truefalse">True / false</span><span data-i18n="chip.fill">Fill in the blanks</span><span data-i18n="chip.table">Table</span><span data-i18n="chip.graph">Graph</span><span data-i18n="chip.image">Image-based</span><span data-i18n="chip.custom">Custom</span><span data-i18n="chip.notes">Your own notes</span><span data-i18n="chip.pdf">PDF or screenshot</span>
+        <span data-i18n="chip.mc">Multiple choice</span><span data-i18n="chip.short">Short answer</span><span data-i18n="chip.truefalse">True / false</span><span data-i18n="chip.fill">Fill in the blanks</span><span data-i18n="chip.table">Table</span><span data-i18n="chip.graph">Graph</span><span data-i18n="chip.image">Image-based</span><span data-i18n="chip.custom">Custom</span><span data-i18n="chip.notes">Your own notes</span><span data-i18n="chip.pdf">PDF or screenshot</span>
+      </div>
+    </div>
+
+    <section class="builder-section section" id="generator" aria-labelledby="generator-title" data-reveal>
+      <div class="shell">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow" data-i18n="builder.eyebrow">The question builder</p>
+            <h2 id="generator-title" data-i18n="builder.title">Build a test around the way you learn.</h2>
+          </div>
+          <p data-i18n="builder.intro">Pick what you are studying, attach the material if you have it, then choose how many questions you want and how each one should be asked.</p>
+        </div>
+        <div class="builder-status">
+          <p class="ai-status is-busy" id="ai-status" role="status" data-i18n="status.checking">Checking the AI connection...</p>
+          <p class="builder-meta" data-i18n="builder.meta">Topic, notes and attachments are sent to Gemini through this local server.</p>
+        </div>
+        <div class="setup-hint" id="setup-hint" hidden>
+          <div>
+            <strong data-i18n="hint.title">Add your Gemini API key to start</strong>
+            <p data-i18n="hint.body">Every test you build runs on your own free Gemini quota, so there is no shared limit to queue behind. Paste your key once and Aceminder remembers it in this browser.</p>
+          </div>
+          <div class="setup-hint-actions">
+            <button class="button button--gold" id="setup-hint-button" type="button" data-i18n="hint.button">Add my Gemini key</button>
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" data-i18n="hint.link">Get a free key ↗</a>
+          </div>
+        </div>
+
+        <form class="builder-panel" id="generator-form" novalidate>
+          <div class="builder-layout">
+            <div class="builder-column">
+              <h3><span class="step-dot">1</span><span data-i18n="form.material">Start with your material</span></h3>
+              <label class="builder-field" for="study-topic">
+                <span data-i18n="form.topic">Topic or subject</span>
+                <input id="study-topic" name="topic" type="text" data-i18n-ph="form.topicPh" placeholder="e.g. Cell structure" required maxlength="120">
+              </label>
+              <label class="builder-field" for="study-notes">
+                <span><span data-i18n="form.notes">Notes or source text</span> <span class="field-hint" data-i18n="form.notesHint">Optional · add key facts to guide the test</span></span>
+                <textarea id="study-notes" name="notes" maxlength="20000" data-i18n-ph="form.notesPh" placeholder="Paste a passage, notes, or a few ideas to revise..."></textarea>
+                <span class="field-hint notes-count" id="notes-count">0 / 20,000 characters</span>
+              </label>
+              <div class="upload-block">
+                <div class="upload-heading">
+                  <span class="field-label" data-i18n="form.files">PDF or screenshot</span>
+                  <span class="field-hint only-desktop" data-i18n="form.filesHint">Up to 4 files · PDFs to 50 MB · images to 1 GB · paste with Ctrl+V</span>
+                  <span class="field-hint only-phone" data-i18n="form.filesHintPhone">Up to 4 files · PDFs to 50 MB</span>
+                </div>
+                <label class="dropzone" id="dropzone" for="source-files">
+                  <span class="dropzone-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+                  </span>
+                  <span class="dropzone-title only-desktop" data-i18n="form.dropTitle">Drop a PDF or image here</span>
+                  <span class="dropzone-hint only-desktop" data-i18n="form.dropHint">click to browse, or paste a screenshot (Ctrl+V) · PDF, PNG, JPG, WebP, GIF</span>
+                  <span class="dropzone-title only-phone" data-i18n="form.dropTitlePhone">Tap to add a PDF or photo</span>
+                  <span class="dropzone-hint only-phone" data-i18n="form.dropHintPhone">Choose a file or snap your notes with the camera · PDF, PNG, JPG, WebP, GIF</span>
+                  <input class="visually-hidden" id="source-files" name="files" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif" multiple>
+                </label>
+                <ul class="file-list" id="file-list" aria-label="Attached files"></ul>
+                <p class="file-status" id="file-status" aria-live="polite">No files attached.</p>
+                <p class="file-error" id="file-error" role="alert" hidden></p>
+              </div>
+              <div class="setting-row">
+                <label class="builder-field" for="question-count">
+                  <span data-i18n="form.count">Number of questions</span>
+                  <input id="question-count" name="questionCount" type="number" min="1" max="30" step="1" value="10" required>
+                </label>
+                <label class="builder-field" for="difficulty">
+                  <span data-i18n="form.difficulty">Difficulty</span>
+                  <select id="difficulty" name="difficulty">
+                    <option value="Too easy" data-i18n="diff.tooeasy">Too easy</option>
+                    <option value="Easy" data-i18n="diff.easy">Easy</option>
+                    <option value="Easy-Medium" data-i18n="diff.easyMedium">Easy-Medium</option>
+                    <option value="Medium" selected data-i18n="diff.medium">Medium</option>
+                    <option value="Medium-Hard" data-i18n="diff.mediumHard">Medium-Hard</option>
+                    <option value="Hard" data-i18n="diff.hard">Hard</option>
+                    <option value="Too Hard" data-i18n="diff.toohard">Too Hard</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div class="builder-column">
+              <h3><span class="step-dot">2</span><span data-i18n="form.styles">Choose each question style</span></h3>
+              <fieldset class="question-groups">
+                <legend data-i18n="form.legend">Assign formats to question ranges</legend>
+                <p class="field-hint" data-i18n="form.legendHint">Ranges must cover every question once. Add a range to mix formats within one test.</p>
+                <div class="type-group-list" id="type-group-list"></div>
+                <p class="range-error" id="range-error" role="alert" hidden></p>
+                <button class="add-type" id="add-type" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                  <span data-i18n="form.addType">Add a question type</span>
+                </button>
+              </fieldset>
+            </div>
+          </div>
+          <p class="form-error" id="form-error" role="alert" hidden></p>
+          <div class="builder-actions">
+            <button class="button button--gold button--lg button--generate" type="submit">
+              <span class="spinner" aria-hidden="true"></span>
+              <span class="button-label" data-i18n="form.generate">Generate my questions</span>
+            </button>
+            <p data-i18n="form.attachNote">Attachments are read by Gemini for this request. Nothing is stored on the server.</p>
+          </div>
+
+          <div class="owl-loading" id="owl-loading" hidden>
+            <div class="owl-loading-art" id="owl-loading-art" aria-hidden="true"></div>
+            <div class="owl-loading-copy">
+              <strong data-i18n="owl.loadTitle">Ace is writing your test…</strong>
+              <p class="owl-loading-line" id="owl-loading-line" aria-live="polite"></p>
+              <span class="owl-loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            </div>
+            <span class="owl-loading-q owl-loading-q--a" aria-hidden="true">?</span>
+            <span class="owl-loading-q owl-loading-q--b" aria-hidden="true">!</span>
+            <span class="owl-loading-q owl-loading-q--c" aria-hidden="true">?</span>
+          </div>
+
+          <section class="plan-output" id="plan-output" aria-labelledby="plan-title" aria-live="polite" hidden>
+            <div class="plan-output-header">
+              <div>
+                <p class="eyebrow" data-i18n="plan.eyebrow">Generated practice test</p>
+                <h3 id="plan-title" data-i18n="plan.title">Your questions</h3>
+                <p class="plan-summary" id="plan-summary"></p>
+              </div>
+              <button class="button button--ghost" id="download-plan" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>
+                <span data-i18n="plan.download">Download test</span>
+              </button>
+            </div>
+            <ol class="plan-groups" id="plan-groups"></ol>
+            <div class="quiz-finish" id="quiz-finish">
+              <div class="quiz-finish-copy">
+                <p class="eyebrow" data-i18n="mark.eyebrow">Mark your work</p>
+                <h4 data-i18n="mark.title">Answered everything? Check your score.</h4>
+                <p id="answer-progress" aria-live="polite">0 of 0 answered</p>
+              </div>
+              <button class="button button--gold button--lg quiz-submit-button" id="submit-answers" type="button">
+                <span class="spinner" aria-hidden="true"></span>
+                <span class="button-label" data-i18n="mark.submit">Submit answers</span>
+              </button>
+            </div>
+            <p class="quiz-status" id="quiz-status" role="alert" hidden></p>
+            <section class="score-panel" id="score-panel" aria-labelledby="score-title" aria-live="polite" hidden>
+              <div class="score-owl" id="score-owl" aria-hidden="true"></div>
+              <div class="score-figure">
+                <strong id="score-percent">0%</strong>
+                <span data-i18n="score.word">score</span>
+              </div>
+              <div class="score-copy">
+                <p class="eyebrow" data-i18n="score.eyebrow">Your result</p>
+                <h4 id="score-title"><span id="score-fraction">0 / 0</span> <span data-i18n="score.correct">correct</span></h4>
+                <p id="score-note"></p>
+                <p class="score-xp" id="score-xp" hidden></p>
+                <button class="button button--ghost" id="reset-answers" type="button" data-i18n="score.retry">Clear answers &amp; try again</button>
+              </div>
+            </section>
+            <p class="integration-note" data-i18n="plan.note">Write your answers above, then submit to see your score. Correct answers and explanations appear after marking.</p>
+          </section>
+        </form>
+      </div>
+    </section>
+
+    <section class="section" id="how-it-works" aria-labelledby="workflow-title" data-reveal>
+      <div class="shell">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow" data-i18n="how.eyebrow">A study flow with you in mind</p>
+            <h2 id="workflow-title" data-i18n="how.title">Your material. Your kind of practice.</h2>
+          </div>
+          <p data-i18n="how.desc">From a class topic to a page of notes or a PDF, Aceminder turns what you have into a focused revision session.</p>
+        </div>
+        <div class="steps">
+          <article class="step card">
+            <span class="step-icon" aria-hidden="true">📚</span>
+            <span class="step-number">01</span>
+            <h3 data-i18n="how.s1t">Start with what you are studying</h3>
+            <p data-i18n="how.s1p">Type a topic, paste your notes, or attach a PDF or screenshot. Gemini reads the material when you generate.</p>
+          </article>
+          <article class="step card">
+            <span class="step-icon" aria-hidden="true">🎛️</span>
+            <span class="step-number">02</span>
+            <h3 data-i18n="how.s2t">Set the shape of your test</h3>
+            <p data-i18n="how.s2p">Choose how many questions you need, the difficulty, and a mix of formats that keeps the session interesting.</p>
+          </article>
+          <article class="step card">
+            <span class="step-icon" aria-hidden="true">🏁</span>
+            <span class="step-number">03</span>
+            <h3 data-i18n="how.s3t">Write, submit, review</h3>
+            <p data-i18n="how.s3p">Write your answers under each question, submit once for a score by fraction and percentage, then review the explanations.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section level-section" id="level-up" aria-labelledby="level-title" data-reveal>
+      <div class="shell level-layout">
+        <div class="level-copy">
+          <p class="eyebrow" data-i18n="game.eyebrow">Built to keep you coming back</p>
+          <h2 id="level-title" data-i18n="game.title">Every test levels you up.</h2>
+          <p class="level-desc" data-i18n="game.desc">Earn XP for every correct answer, keep your daily streak alive and unlock badges. Harder tests pay more.</p>
+          <ul class="rules">
+            <li><span class="rule-icon" aria-hidden="true">⚡</span><div><strong data-i18n="game.r1t">XP for every right answer</strong><p data-i18n="game.r1p">Harder tests multiply your XP, up to 2× on Too Hard. A perfect score adds a bonus.</p></div></li>
+            <li><span class="rule-icon" aria-hidden="true">🔥</span><div><strong data-i18n="game.r2t">Keep the flame alive</strong><p data-i18n="game.r2p">Mark one test a day to grow your streak. Miss a day and it starts again.</p></div></li>
+            <li><span class="rule-icon" aria-hidden="true">🏅</span><div><strong data-i18n="game.r3t">Collect every badge</strong><p data-i18n="game.r3p">Flawless runs, hard-mode wins and long streaks unlock badges.</p></div></li>
+          </ul>
+          <a class="button button--gold button--lg" href="#generator" data-i18n="game.cta">Start a run</a>
+        </div>
+
+        <article class="player-card" id="player-card" aria-labelledby="player-rank">
+          <div class="player-head">
+            <div class="player-level">
+              <span class="player-level-label" data-i18n="game.level">Level</span>
+              <strong id="player-level">1</strong>
+            </div>
+            <div class="player-id">
+              <p class="player-name" id="player-name"></p>
+              <h3 id="player-rank">Novice</h3>
+              <p id="player-xp-text">0 / 100 XP</p>
+              <div class="xp-bar" aria-hidden="true"><span class="xp-bar-fill" id="player-xp-fill"></span></div>
+            </div>
+          </div>
+          <dl class="player-stats">
+            <div><dt data-i18n="game.streak">Day streak</dt><dd><span aria-hidden="true">🔥</span> <span id="stat-streak">0</span></dd></div>
+            <div><dt data-i18n="game.tests">Tests marked</dt><dd id="stat-tests">0</dd></div>
+            <div><dt data-i18n="game.best">Best score</dt><dd id="stat-best">–</dd></div>
+            <div><dt data-i18n="game.correct">Correct answers</dt><dd id="stat-correct">0</dd></div>
+          </dl>
+          <div class="badges-head">
+            <h4 data-i18n="ach.eyebrow">Achievements</h4>
+            <a class="badges-link" href="#achievements"><span id="badge-count">0 / 28</span> →</a>
+          </div>
+          <ul class="badges" id="badges"></ul>
+          <p class="player-note" data-i18n="game.local">Progress is saved in this browser only.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section ach-section" id="achievements" aria-labelledby="ach-title" data-reveal>
+      <div class="shell">
+        <div class="ach-head">
+          <div class="ach-owl" id="ach-owl" aria-hidden="true"></div>
+          <div class="ach-head-copy">
+            <p class="eyebrow" data-i18n="ach.eyebrow">Achievements</p>
+            <h2 id="ach-title" data-i18n="ach.title">Collect them all.</h2>
+            <p data-i18n="ach.desc">Every achievement has its own artwork, and Ace the Owl stars in most of them. Unlock them by practising, keeping streaks and taking on harder tests.</p>
+          </div>
+          <div class="ach-summary card">
+            <strong id="ach-count">0 / 28</strong>
+            <div class="xp-bar" aria-hidden="true"><span class="xp-bar-fill" id="ach-meter"></span></div>
+            <dl class="ach-tiers">
+              <div><dt class="ach-tier ach-tier--bronze" data-i18n="ach.tier.bronze">Bronze</dt><dd id="ach-tier-bronze">0/0</dd></div>
+              <div><dt class="ach-tier ach-tier--silver" data-i18n="ach.tier.silver">Silver</dt><dd id="ach-tier-silver">0/0</dd></div>
+              <div><dt class="ach-tier ach-tier--gold" data-i18n="ach.tier.gold">Gold</dt><dd id="ach-tier-gold">0/0</dd></div>
+              <div><dt class="ach-tier ach-tier--diamond" data-i18n="ach.tier.diamond">Diamond</dt><dd id="ach-tier-diamond">0/0</dd></div>
+            </dl>
+          </div>
+        </div>
+        <div class="ach-filters" role="group">
+          <button type="button" data-ach-filter="all" class="is-active" data-i18n="ach.all">All</button>
+          <button type="button" data-ach-filter="unlocked" data-i18n="ach.unlocked">Unlocked</button>
+          <button type="button" data-ach-filter="locked" data-i18n="ach.locked">Locked</button>
+        </div>
+        <p class="ach-guest" id="ach-guest" data-i18n="ach.guest">Playing as a guest: achievements are saved in this browser. Sign in to keep them on every device.</p>
+        <div class="ach-grid" id="ach-grid"></div>
+      </div>
+    </section>
+
+    <section class="section board-wrap" id="leaderboard" aria-labelledby="board-title" data-reveal>
+      <div class="shell">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow" data-i18n="board.eyebrow">Leaderboard</p>
+            <h2 id="board-title" data-i18n="board.title">Climb the ranks.</h2>
+          </div>
+          <p data-i18n="board.desc">Earn XP by marking tests while signed in. The weekly board resets every Monday.</p>
+        </div>
+        <div class="board card" id="board-section">
+          <div class="board-tabs" role="tablist">
+            <button type="button" role="tab" class="is-active" data-board="week" data-i18n="board.week">This week</button>
+            <button type="button" role="tab" data-board="all" data-i18n="board.all">All time</button>
+          </div>
+          <ol class="board-list" id="board-list" aria-live="polite"></ol>
+          <div class="board-foot">
+            <p class="board-me" id="board-me" hidden></p>
+            <button class="button button--gold" id="board-join" type="button" data-i18n="board.join">Sign up to join</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section choices" id="your-way" aria-labelledby="choices-title" data-reveal>
+      <div class="shell">
+        <div class="section-heading section-heading--center">
+          <div>
+            <p class="eyebrow" data-i18n="way.eyebrow">A little more personal</p>
+            <h2 id="choices-title" data-i18n="way.title">Revision should fit the learner.</h2>
+          </div>
+          <p data-i18n="way.desc">Aceminder is built around the choices that make a study session feel useful, not one-size-fits-all.</p>
+        </div>
+        <div class="choice-grid">
+          <div class="choice-row card">
+            <p class="choice-label" data-i18n="way.challenge">Choose a challenge</p>
+            <div class="choice-values difficulty-scale">
+              <span class="choice-chip" data-i18n="chip.tooeasy">Too easy</span><span class="choice-chip" data-i18n="chip.easy">Easy</span><span class="choice-chip" data-i18n="chip.easyMedium">Easy–Medium</span><span class="choice-chip" data-i18n="chip.medium">Medium</span><span class="choice-chip" data-i18n="chip.mediumHard">Medium–Hard</span><span class="choice-chip" data-i18n="chip.hard">Hard</span><span class="choice-chip" data-i18n="chip.toohard">Too hard</span>
+            </div>
+          </div>
+          <div class="choice-row card">
+            <p class="choice-label" data-i18n="way.format">Choose a format</p>
+            <div class="choice-values">
+              <span class="choice-chip" data-i18n="chip.mc">Multiple choice</span><span class="choice-chip" data-i18n="chip.short">Short answer</span><span class="choice-chip" data-i18n="chip.truefalse">True / false</span><span class="choice-chip" data-i18n="chip.fill">Fill in the blanks</span><span class="choice-chip" data-i18n="chip.table">Table</span><span class="choice-chip" data-i18n="chip.graph">Graph</span><span class="choice-chip" data-i18n="chip.image">Image-based</span><span class="choice-chip" data-i18n="chip.custom">Custom</span>
+            </div>
+          </div>
+          <div class="choice-row card">
+            <p class="choice-label" data-i18n="way.focus">Choose your focus</p>
+            <div class="choice-values">
+              <span class="choice-chip" data-i18n="chip.any">Any topic</span><span class="choice-chip" data-i18n="chip.notes">Your own notes</span><span class="choice-chip" data-i18n="chip.pdf">PDF or screenshot</span><span class="choice-chip" data-i18n="chip.formats">8 question formats</span>
+            </div>
+          </div>
+        </div>
+        <div class="final-cta">
+          <img src="Aceminder.png" alt="" width="72" height="72">
+          <p data-i18n="way.note">From a quick check-in to a deeper review, the goal is simple: make your next study session feel more like yours.</p>
+          <a class="button button--gold button--lg" href="#generator" data-i18n="way.cta">Start building</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-owl" id="footer-owl" aria-hidden="true"></div>
+    <div class="footer-inner shell">
+      <span class="footer-brand"><img src="Aceminder.png" alt="" width="28" height="28"><span data-i18n="footer.rights">© 2026 Aceminder</span></span>
+      <p data-i18n="footer.tag">Revision, your way.</p>
+    </div>
+  </footer>
+
+  <section class="cookie-banner" id="cookie-banner" aria-labelledby="cookie-title" hidden>
+    <div class="cookie-owl" id="cookie-owl" aria-hidden="true"></div>
+    <div class="cookie-copy">
+      <strong id="cookie-title" data-i18n="cookie.title">Cookies keep your key ready</strong>
+      <p data-i18n="cookie.body">Aceminder stores your Gemini API key in a cookie on this device so your practice tests are ready every visit. The key is only ever sent to Gemini.</p>
+    </div>
+    <div class="cookie-actions">
+      <button class="button button--gold" id="cookie-accept" type="button" data-i18n="cookie.accept">Accept cookies</button>
+      <button class="button button--ghost" id="cookie-decline" type="button" data-i18n="cookie.decline">Not now</button>
+    </div>
+  </section>
+
+  <dialog class="key-dialog" id="key-dialog" aria-labelledby="key-dialog-title">
+    <form class="key-dialog-panel" id="key-form" novalidate>
+      <div class="key-dialog-head">
+        <div>
+          <p class="eyebrow" data-i18n="key.eyebrow">Two-minute setup</p>
+          <h2 id="key-dialog-title" data-i18n="key.title">Connect your Gemini API key</h2>
+        </div>
+        <button class="key-dialog-close" id="key-dialog-close" type="button" aria-label="Close the API key setup">×</button>
+      </div>
+      <p class="key-dialog-intro" data-i18n="key.intro">Aceminder asks Gemini to write and mark your questions. With your own key, every test runs on your own quota — no monthly ceiling and no waiting on anyone else.</p>
+      <ol class="key-steps">
+        <li>
+          <span class="key-step-number">1</span>
+          <div>
+            <strong data-i18n="key.s1t">Open Google AI Studio</strong>
+            <p><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a> <span data-i18n="key.s1p">Sign in with your Google account and choose Create API key.</span></p>
+          </div>
+        </li>
+        <li>
+          <span class="key-step-number">2</span>
+          <div>
+            <strong data-i18n="key.s2t">Copy the whole key</strong>
+            <p data-i18n="key.s2p">It starts with AIza and is about 39 characters long. Copy all of it, with no spaces.</p>
+          </div>
+        </li>
+        <li>
+          <span class="key-step-number">3</span>
+          <div>
+            <strong data-i18n="key.s3t">Paste it here once</strong>
+            <p data-i18n="key.s3p">Save it and Aceminder remembers it in this browser, so you never have to type it again on this device.</p>
+          </div>
+        </li>
+      </ol>
+      <label class="key-field" for="key-input">
+        <span data-i18n="key.field">Your Gemini API key</span>
+        <span class="key-input-row">
+          <input id="key-input" name="key" type="password" autocomplete="off" spellcheck="false" placeholder="AIza..." maxlength="200">
+          <button class="key-reveal" id="key-reveal" type="button" aria-label="Show the key" data-i18n="key.show">Show</button>
+        </span>
+      </label>
+      <label class="key-remember" for="key-remember">
+        <input id="key-remember" type="checkbox" checked>
+        <span data-i18n="key.remember">Remember my key in this browser (cookie)</span>
+      </label>
+      <p class="key-remember-note" id="key-remember-note" hidden data-i18n="key.rememberOff">Cookies are off, so the key is kept only until you close this tab.</p>
+      <p class="key-message" id="key-message" role="status" hidden></p>
+      <div class="key-actions">
+        <button class="button button--gold" id="key-save" type="submit" data-i18n="key.save">Save &amp; continue</button>
+        <button class="key-remove" id="key-remove" type="button" hidden data-i18n="key.remove">Remove saved key</button>
+      </div>
+      <p class="key-privacy" data-i18n="key.privacy">Your key stays in this browser and is sent only to this local server, which forwards it to Google's Gemini API. It is never written to a file or shared. Testing it uses no generation quota.</p>
+    </form>
+  </dialog>
+
+  <dialog class="key-dialog account-dialog" id="auth-dialog" aria-labelledby="auth-title" data-mode="signup">
+    <div class="key-dialog-panel">
+      <div class="key-dialog-head">
+        <div>
+          <p class="eyebrow" data-i18n="acct.eyebrow">Aceminder account</p>
+          <h2 id="auth-title">Create your account</h2>
+        </div>
+        <button class="key-dialog-close" id="auth-close" type="button" data-i18n-aria="acct.close" aria-label="Close">×</button>
+      </div>
+      <p class="key-dialog-intro" data-i18n="acct.sub">Save your XP, keep your streak on every device and climb the leaderboard.</p>
+      <div class="auth-switch" role="tablist">
+        <button type="button" role="tab" data-auth-mode="signup" class="is-active" data-i18n="acct.tabSignup">Sign up</button>
+        <button type="button" role="tab" data-auth-mode="login" data-i18n="acct.tabLogin">Log in</button>
+      </div>
+      <div class="social-buttons">
+        <div class="google-slot" id="google-slot" hidden></div>
+        <button class="social-button social-button--google" id="google-fallback" type="button">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+          <span data-i18n="acct.google">Continue with Google</span>
+        </button>
+        <button class="social-button social-button--apple" id="apple-button" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.1-1.2 2.9-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.4-1-2.4-3.9ZM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4Z"/></svg>
+          <span data-i18n="acct.apple">Continue with Apple</span>
+        </button>
+        <p class="social-note" id="social-note" hidden data-i18n="acct.notSetUp">Google and Apple sign-in are not set up on this server yet.</p>
+      </div>
+      <div class="auth-divider"><span data-i18n="acct.or">or use email</span></div>
+      <form class="auth-form" id="auth-form" novalidate>
+        <label class="key-field signup-only" for="auth-username">
+          <span data-i18n="acct.username">Username</span>
+          <input id="auth-username" type="text" maxlength="20" autocomplete="nickname" spellcheck="false" autocapitalize="off">
+          <span class="name-status" id="auth-username-status" data-i18n="acct.usernameHint">3–20 letters, numbers, _ or .</span>
+        </label>
+        <label class="key-field" for="auth-email">
+          <span class="signup-only" data-i18n="acct.email">Email</span>
+          <span class="login-only" data-i18n="acct.emailOrName">Email or username</span>
+          <input id="auth-email" type="email" maxlength="254" autocomplete="email" spellcheck="false" autocapitalize="off">
+        </label>
+        <label class="key-field" for="auth-password">
+          <span data-i18n="acct.password">Password</span>
+          <input id="auth-password" type="password" maxlength="200" autocomplete="new-password">
+          <span class="name-status signup-only" data-i18n="acct.passwordHint">At least 8 characters</span>
+        </label>
+        <p class="key-message" id="auth-message" role="status" hidden></p>
+        <button class="button button--gold button--lg auth-submit" id="auth-submit" type="submit">Create account</button>
+        <button class="link-button login-only" id="auth-forgot" type="button" data-i18n="acct.forgot">Forgot password?</button>
+      </form>
+      <p class="key-privacy" data-i18n="acct.privacy">Only your username, avatar and XP appear on the leaderboard. Your email is never shown.</p>
+      <button class="link-button" id="auth-key" type="button" data-i18n="acct.geminiKey">Gemini API key</button>
+    </div>
+  </dialog>
+
+  <dialog class="key-dialog account-dialog" id="username-dialog" aria-labelledby="pick-title">
+    <form class="key-dialog-panel" id="pick-form" novalidate>
+      <div class="key-dialog-head">
+        <div>
+          <p class="eyebrow" data-i18n="acct.eyebrow">Aceminder account</p>
+          <h2 id="pick-title" data-i18n="acct.pickTitle">Choose your username</h2>
+        </div>
+        <button class="key-dialog-close" id="pick-close" type="button" data-i18n-aria="acct.close" aria-label="Close">×</button>
+      </div>
+      <div class="pick-main" id="pick-main">
+        <p class="key-dialog-intro" data-i18n="acct.pickSub">This is how you appear on the leaderboard. You can change it later.</p>
+        <div class="photo-row">
+          <span class="photo-preview" id="photo-preview" aria-hidden="true"></span>
+          <div class="photo-actions">
+            <label class="button button--ghost photo-upload">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+              <span data-i18n="acct.photo">Upload a photo</span>
+              <input class="visually-hidden" id="photo-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+            </label>
+            <button class="link-button link-button--danger" id="photo-remove" type="button" hidden data-i18n="acct.photoRemove">Remove photo</button>
+            <small class="name-status" data-i18n="acct.photoNote">Your photo is shown on the leaderboard.</small>
+          </div>
+        </div>
+        <label class="key-field" for="pick-username">
+          <span data-i18n="acct.username">Username</span>
+          <input id="pick-username" type="text" maxlength="20" autocomplete="nickname" spellcheck="false" autocapitalize="off">
+          <span class="name-status" id="pick-status"></span>
+        </label>
+        <div class="key-field">
+          <span data-i18n="acct.owlAvatars">Ace the Owl</span>
+          <div class="avatar-grid avatar-grid--owls" id="pick-owls"></div>
+        </div>
+        <div class="key-field">
+          <span data-i18n="acct.avatar">Pick an avatar</span>
+          <div class="avatar-grid" id="pick-avatars"></div>
+        </div>
+      </div>
+      <div class="cropper" id="cropper" hidden>
+        <canvas class="crop-canvas" id="crop-canvas" width="300" height="300" aria-label="Photo crop area"></canvas>
+        <label class="crop-zoom" for="crop-zoom">
+          <span data-i18n="acct.photoZoom">Zoom</span>
+          <input id="crop-zoom" type="range" min="1" max="4" step="0.01" value="1">
+        </label>
+        <p class="name-status" data-i18n="acct.photoHint">Drag the photo to position it inside the circle.</p>
+        <div class="crop-actions">
+          <button class="button button--gold" id="crop-use" type="button"><span class="spinner" aria-hidden="true"></span><span data-i18n="acct.photoUse">Use this photo</span></button>
+          <button class="button button--ghost" id="crop-cancel" type="button" data-i18n="acct.photoCancel">Cancel</button>
+        </div>
+      </div>
+      <p class="key-message" id="pick-message" role="status" hidden></p>
+      <button class="button button--gold button--lg" id="pick-save" type="submit" data-i18n="acct.save">Save</button>
+    </form>
+  </dialog>
+
+  <dialog class="key-dialog account-dialog" id="profile-dialog" aria-labelledby="profile-name">
+    <div class="key-dialog-panel">
+      <div class="key-dialog-head">
+        <div class="profile-id">
+          <span class="profile-avatar" id="profile-avatar" aria-hidden="true">🦉</span>
+          <div>
+            <h2 id="profile-name">—</h2>
+            <p id="profile-email"></p>
+            <p id="profile-since"></p>
+          </div>
+        </div>
+        <button class="key-dialog-close" id="profile-close" type="button" data-i18n-aria="acct.close" aria-label="Close">×</button>
+      </div>
+      <dl class="profile-stats">
+        <div><dt data-i18n="game.level">Level</dt><dd id="profile-level">1</dd></div>
+        <div><dt>XP</dt><dd id="profile-xp">0</dd></div>
+        <div><dt data-i18n="game.streak">Day streak</dt><dd><span aria-hidden="true">🔥</span><span id="profile-streak">0</span></dd></div>
+        <div><dt data-i18n="game.tests">Tests marked</dt><dd id="profile-tests">0</dd></div>
+      </dl>
+      <div class="profile-actions">
+        <button class="button button--ghost" id="profile-edit" type="button" data-i18n="acct.edit">Change username or avatar</button>
+        <button class="button button--ghost" id="profile-key" type="button" data-i18n="acct.geminiKey">Gemini API key</button>
+      </div>
+      <h3 class="profile-heading" data-i18n="acct.history">Recent tests</h3>
+      <ul class="history-list" id="profile-history"></ul>
+      <div class="profile-footer">
+        <button class="button button--ghost" id="profile-signout" type="button" data-i18n="acct.signOut">Sign out</button>
+        <button class="link-button link-button--danger" id="profile-delete" type="button" data-i18n="acct.delete">Delete account</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="key-dialog account-dialog" id="reset-dialog" aria-labelledby="reset-title" data-step="request">
+    <form class="key-dialog-panel" id="reset-form" novalidate>
+      <div class="key-dialog-head">
+        <div>
+          <p class="eyebrow" data-i18n="acct.eyebrow">Aceminder account</p>
+          <h2 id="reset-title" data-i18n="acct.resetTitle">Reset your password</h2>
+        </div>
+        <button class="key-dialog-close" id="reset-close" type="button" data-i18n-aria="acct.close" aria-label="Close">×</button>
+      </div>
+      <p class="key-dialog-intro" id="reset-sub"></p>
+      <label class="key-field reset-request" for="reset-email">
+        <span data-i18n="acct.email">Email</span>
+        <input id="reset-email" type="email" maxlength="254" autocomplete="email">
+      </label>
+      <label class="key-field reset-set" for="reset-password">
+        <span data-i18n="acct.newPassword">New password</span>
+        <input id="reset-password" type="password" maxlength="200" autocomplete="new-password">
+        <span class="name-status" data-i18n="acct.passwordHint">At least 8 characters</span>
+      </label>
+      <p class="key-message" id="reset-message" role="status" hidden></p>
+      <button class="button button--gold button--lg" id="reset-submit" type="submit">Send reset link</button>
+    </form>
+  </dialog>
+
+  <dialog class="key-dialog ach-dialog" id="ach-dialog" aria-labelledby="ach-detail-name">
+    <div class="key-dialog-panel ach-detail">
+      <button class="key-dialog-close" id="ach-detail-close" type="button" data-i18n-aria="acct.close" aria-label="Close">×</button>
+      <div class="ach-detail-art" id="ach-detail-art"></div>
+      <span class="ach-tier" id="ach-detail-tier"></span>
+      <h2 id="ach-detail-name"></h2>
+      <p id="ach-detail-desc"></p>
+      <div class="xp-bar" aria-hidden="true"><span class="xp-bar-fill" id="ach-detail-bar"></span></div>
+      <p class="ach-detail-status" id="ach-detail-status"></p>
+    </div>
+  </dialog>
+
+  <div class="ach-pop" id="ach-pop" role="status" hidden>
+    <div class="ach-pop-rays" aria-hidden="true"></div>
+    <p class="ach-pop-title" data-i18n="ach.popTitle">Achievement unlocked!</p>
+    <div class="ach-pop-art" id="ach-pop-art"></div>
+    <span class="ach-tier" id="ach-pop-tier"></span>
+    <strong class="ach-pop-name" id="ach-pop-name"></strong>
+    <p class="ach-pop-desc" id="ach-pop-desc"></p>
+  </div>
+
+  <nav class="tabbar" id="tabbar" aria-label="Quick navigation">
+    <a class="tab is-active" href="#top" data-tab-target="#top">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>
+      <span data-i18n="tab.home">Home</span>
+    </a>
+    <a class="tab" href="#generator" data-tab-target="#generator">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><path d="m6.3 6.3 2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1"/></svg>
+      <span data-i18n="tab.build">Build</span>
+    </a>
+    <a class="tab" href="#level-up" data-tab-target="#level-up">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0Z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>
+      <span data-i18n="tab.level">Level</span>
+      <span class="tab-badge" id="tab-streak" hidden>🔥0</span>
+    </a>
+    <a class="tab" href="#leaderboard" data-tab-target="#leaderboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V12h5v9M9 21V6h6v15M15 21v-6h5v6M3 21h18"/></svg>
+      <span data-i18n="tab.ranks">Ranks</span>
+    </a>
+    <button class="tab" id="tab-me" type="button">
+      <span class="tab-avatar" id="tab-me-avatar" aria-hidden="true">👤</span>
+      <span data-i18n="tab.me">Me</span>
+    </button>
+  </nav>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <canvas class="confetti" id="confetti" aria-hidden="true"></canvas>
+</body>
+</html>
