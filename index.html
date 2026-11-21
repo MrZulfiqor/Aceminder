@@ -589,18 +589,6 @@
         <button type="button" role="tab" data-auth-mode="signup" class="is-active" data-i18n="acct.tabSignup">Sign up</button>
         <button type="button" role="tab" data-auth-mode="login" data-i18n="acct.tabLogin">Log in</button>
       </div>
-      <div class="social-buttons">
-        <button class="social-button social-button--google" id="google-button" type="button" data-provider="google">
-          <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
-          <span data-i18n="acct.google">Continue with Google</span>
-        </button>
-        <button class="social-button social-button--apple" id="apple-button" type="button" data-provider="apple">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.1-1.2 2.9-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.4-1-2.4-3.9ZM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4Z"/></svg>
-          <span data-i18n="acct.apple">Continue with Apple</span>
-        </button>
-        <p class="social-note" id="social-note" hidden data-i18n="acct.notSetUp">Google and Apple sign-in are not set up on this server yet.</p>
-      </div>
-      <div class="auth-divider"><span data-i18n="acct.or">or use email</span></div>
       <form class="auth-form" id="auth-form" novalidate>
         <label class="key-field signup-only" for="auth-username">
           <span data-i18n="acct.username">Username</span>
@@ -708,33 +696,18 @@
         <button class="button button--ghost" id="profile-edit" type="button" data-i18n="acct.edit">Change username or avatar</button>
         <button class="button button--ghost" id="profile-key" type="button" data-i18n="acct.geminiKey">Gemini API key</button>
       </div>
-      <h3 class="profile-heading" data-i18n="acct.methods">Sign-in methods</h3>
-      <ul class="method-list" id="profile-methods">
-        <li class="method-row" data-method="google">
-          <span class="method-icon method-icon--google" aria-hidden="true"><svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg></span>
-          <strong>Google</strong>
-          <span class="method-state" data-method-state></span>
-          <button class="button button--ghost method-action" type="button" data-link-provider="google" data-i18n="acct.link">Connect</button>
-        </li>
-        <li class="method-row" data-method="apple">
-          <span class="method-icon method-icon--apple" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.1-1.2 2.9-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.4-1-2.4-3.9ZM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4Z"/></svg></span>
-          <strong>Apple</strong>
-          <span class="method-state" data-method-state></span>
-          <button class="button button--ghost method-action" type="button" data-link-provider="apple" data-i18n="acct.link">Connect</button>
-        </li>
-        <li class="method-row" data-method="password">
-          <span class="method-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
-          <strong data-i18n="acct.password">Password</strong>
-          <span class="method-state" data-method-state></span>
-          <button class="button button--ghost method-action" id="password-open" type="button"></button>
-        </li>
-      </ul>
+      <h3 class="profile-heading" data-i18n="acct.security">Password &amp; recovery</h3>
+      <div class="profile-actions">
+        <button class="button button--ghost" id="password-open" type="button" data-i18n="acct.passwordChange">Change password</button>
+        <button class="button button--ghost" id="recovery-open" type="button" data-i18n="acct.recoveryNew">New recovery code</button>
+      </div>
+      <p class="name-status profile-recovery-note" id="profile-recovery-note" hidden data-i18n="acct.recoveryMissing">You have no recovery code yet. Create one so you can reset a forgotten password.</p>
       <form class="auth-form password-form" id="password-form" hidden novalidate>
-        <label class="key-field" for="password-current" id="password-current-field">
+        <label class="key-field" for="password-current">
           <span data-i18n="acct.currentPassword">Current password</span>
           <input id="password-current" type="password" maxlength="200" autocomplete="current-password">
         </label>
-        <label class="key-field" for="password-new">
+        <label class="key-field password-new-field" for="password-new">
           <span data-i18n="acct.newPassword">New password</span>
           <span class="password-wrap">
             <input id="password-new" type="password" maxlength="200" autocomplete="new-password">
@@ -759,7 +732,7 @@
     </div>
   </dialog>
 
-  <dialog class="key-dialog account-dialog" id="reset-dialog" aria-labelledby="reset-title" data-step="request">
+  <dialog class="key-dialog account-dialog" id="reset-dialog" aria-labelledby="reset-title" data-step="code">
     <form class="key-dialog-panel" id="reset-form" novalidate>
       <div class="key-dialog-head">
         <div>
@@ -769,6 +742,14 @@
         <button class="key-dialog-close" id="reset-close" type="button" data-i18n-aria="acct.close" aria-label="Close">×</button>
       </div>
       <p class="key-dialog-intro" id="reset-sub"></p>
+      <label class="key-field reset-code-only" for="reset-identifier">
+        <span data-i18n="acct.emailOrName">Email or username</span>
+        <input id="reset-identifier" type="text" maxlength="254" autocomplete="username" spellcheck="false" autocapitalize="off">
+      </label>
+      <label class="key-field reset-code-only" for="reset-code">
+        <span data-i18n="acct.recoveryCode">Recovery code</span>
+        <input class="recovery-input" id="reset-code" type="text" maxlength="24" autocomplete="one-time-code" spellcheck="false" autocapitalize="characters" placeholder="XXXX-XXXX-XXXX-XXXX">
+      </label>
       <label class="key-field reset-request" for="reset-email">
         <span data-i18n="acct.email">Email</span>
         <input id="reset-email" type="email" maxlength="254" autocomplete="email">
@@ -776,15 +757,49 @@
       <label class="key-field reset-set" for="reset-password">
         <span data-i18n="acct.newPassword">New password</span>
         <span class="password-wrap">
-          <input id="reset-password" type="password" maxlength="200" autocomplete="new-password">
-          <button class="password-toggle" type="button" data-toggle-password="reset-password" data-i18n-aria="acct.showPassword" aria-label="Show password" aria-pressed="false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
-          </button>
-        </span>
+            <input id="reset-password" type="password" maxlength="200" autocomplete="new-password">
+            <button class="password-toggle" type="button" data-toggle-password="reset-password" data-i18n-aria="acct.showPassword" aria-label="Show password" aria-pressed="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </span>
         <span class="name-status" data-i18n="acct.passwordHint">At least 8 characters</span>
       </label>
       <p class="key-message" id="reset-message" role="status" hidden></p>
-      <button class="button button--gold button--lg" id="reset-submit" type="submit">Send reset link</button>
+      <button class="button button--gold button--lg" id="reset-submit" type="submit">Reset password</button>
+      <button class="link-button" id="reset-switch" type="button" hidden></button>
+    </form>
+  </dialog>
+
+  <dialog class="key-dialog account-dialog" id="recovery-dialog" aria-labelledby="recovery-title">
+    <form class="key-dialog-panel" id="recovery-form" novalidate>
+      <div class="key-dialog-head">
+        <div>
+          <p class="eyebrow" data-i18n="acct.eyebrow">Aceminder account</p>
+          <h2 id="recovery-title" data-i18n="acct.recoveryTitle">Save your recovery code</h2>
+        </div>
+      </div>
+      <div class="recovery-confirm" id="recovery-confirm">
+        <p class="key-dialog-intro" data-i18n="acct.recoveryConfirmSub">Enter your password to create a new recovery code. Your old code will stop working.</p>
+        <label class="key-field" for="recovery-password">
+          <span data-i18n="acct.password">Password</span>
+          <input id="recovery-password" type="password" maxlength="200" autocomplete="current-password">
+        </label>
+      </div>
+      <div class="recovery-show" id="recovery-show" hidden>
+        <p class="key-dialog-intro" data-i18n="acct.recoverySub">If you ever forget your password, this code lets you choose a new one. Write it down or save it somewhere safe. It is shown only once.</p>
+        <output class="recovery-code" id="recovery-code" aria-live="polite"></output>
+        <div class="password-form-actions">
+          <button class="button button--ghost" id="recovery-copy" type="button" data-i18n="acct.copy">Copy</button>
+          <button class="button button--ghost" id="recovery-download" type="button" data-i18n="acct.download">Download</button>
+        </div>
+        <label class="recovery-check">
+          <input id="recovery-saved" type="checkbox">
+          <span data-i18n="acct.recoverySaved">I saved my recovery code</span>
+        </label>
+      </div>
+      <p class="key-message" id="recovery-message" role="status" hidden></p>
+      <button class="button button--gold button--lg" id="recovery-submit" type="submit">Continue</button>
+      <button class="link-button" id="recovery-cancel" type="button" data-i18n="acct.photoCancel">Cancel</button>
     </form>
   </dialog>
 

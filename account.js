@@ -1,7 +1,7 @@
 'use strict';
 
-/* Aceminder accounts in the browser: sign up / log in (email, Google, Apple), usernames and
-   avatars, the profile sheet, password reset and the leaderboard. Sessions live in an
+/* Aceminder accounts in the browser: sign up / log in with email and password, usernames and
+   avatars, the profile sheet, forgotten passwords (recovery code or email link) and the leaderboard. Sessions live in an
    HttpOnly cookie set by the server, so this file never sees or stores a password or token. */
 
 (function () {
@@ -11,7 +11,7 @@
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const state = {
-    config: { google: null, apple: null, email: true, passwordReset: false, avatars: ['🦉'] },
+    config: { email: true, passwordReset: false, avatars: ['🦉'] },
     user: null,
     loaded: false,
     mode: 'signup',
@@ -65,26 +65,6 @@
       if (text !== key) return text;
     }
     return (data && data.error) || tr('err.auth.generic');
-  }
-
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const existing = document.querySelector(`script[src="${src}"]`);
-      if (existing) {
-        if (existing.dataset.loaded) resolve();
-        else existing.addEventListener('load', () => resolve(), { once: true });
-        return;
-      }
-      const script = document.createElement('script');
-      script.src = src;
-      script.async = true;
-      script.onload = () => {
-        script.dataset.loaded = 'yes';
-        resolve();
-      };
-      script.onerror = () => reject(new Error('script'));
-      document.head.append(script);
-    });
   }
 
   function showMessage(node, text, tone) {
@@ -190,7 +170,6 @@
     hidePasswords(authDialog);
     openDialog(authDialog);
     setMode(mode);
-    renderSocial();
     window.setTimeout(() => (state.mode === 'signup' ? authUsername : authEmail).focus({ preventScroll: true }), 80);
   }
 
@@ -276,9 +255,10 @@
     authForm.reset();
     hidePasswords(authDialog);
     authDialog.close();
-    setUser(data.user);
+    setUser(data.user, { quiet: Boolean(data.recoveryCode) });
     const name = data.user.username || '';
     toast(data.created ? tr('acct.welcome', { name }) : tr('acct.welcomeBack', { name }), '🦉');
+    if (data.recoveryCode) showRecoveryCode(data.recoveryCode);
     loadBoard();
   }
 
@@ -291,96 +271,8 @@
     authDialog.close();
     $('#open-key-dialog')?.click();
   });
-  $('#auth-forgot')?.addEventListener('click', () => {
-    if (!state.config.passwordReset) {
-      showMessage(authMessage, tr('err.auth.mail'), 'error');
-      return;
-    }
-    openReset('', authEmail.value.includes('@') ? authEmail.value.trim() : '');
-  });
+  $('#auth-forgot')?.addEventListener('click', () => openReset('', authEmail.value.trim()));
   closeOnBackdrop(authDialog);
-
-  /* ---------- Google and Apple ---------- */
-
-  /* Both use a full-page redirect handled by the server (see accounts.py), so they work in
-     installed home-screen apps, in-app browsers and with content blockers. The server sends
-     the browser back to /#auth=... or /#auth-error=... when it is done. */
-  const PROVIDER_NAMES = { google: 'Google', apple: 'Apple' };
-
-  function renderSocial() {
-    const google = Boolean(state.config.google);
-    const apple = Boolean(state.config.apple);
-    [['#google-button', google], ['#apple-button', apple]].forEach(([selector, on]) => {
-      const button = $(selector);
-      if (!button) return;
-      button.disabled = !on;
-      button.title = on ? '' : tr('acct.notSetUp');
-      button.classList.remove('is-loading');
-    });
-    $('#social-note').hidden = google && apple;
-  }
-
-  function goToProvider(provider, link) {
-    if (!state.config[provider]) {
-      showMessage(authMessage, tr('err.auth.notConfigured'), 'error');
-      return;
-    }
-    window.AceDevice?.vibrate(8);
-    document.querySelectorAll(`[data-provider="${provider}"], [data-link-provider="${provider}"]`).forEach(button => {
-      button.classList.add('is-loading');
-      button.disabled = true;
-    });
-    window.location.assign(`/api/auth/${provider}/start${link ? '?link=1' : ''}`);
-  }
-
-  document.querySelectorAll('.social-button[data-provider]').forEach(button => {
-    button.addEventListener('click', () => goToProvider(button.dataset.provider, false));
-  });
-
-  /* Coming back from Google or Apple */
-  function readAuthReturn() {
-    const match = /^#auth(-error)?=([A-Za-z-]{1,40})$/.exec(window.location.hash);
-    if (!match) return null;
-    window.history.replaceState(null, '', window.location.pathname + window.location.search);
-    return { error: Boolean(match[1]), value: match[2] };
-  }
-
-  function showAuthReturn(result) {
-    if (!result) return;
-    if (result.error) {
-      if (result.value === 'cancelled') {
-        toast(tr('err.auth.cancelled'), '👋');
-        return;
-      }
-      if (state.user && result.value === 'linkedElsewhere') {
-        openProfile();
-        toast(tr('err.auth.linkedElsewhere'), '⚠️');
-        return;
-      }
-      openAuth('login');
-      const key = `err.auth.${result.value}`;
-      const text = tr(key);
-      showMessage(authMessage, text !== key ? text : tr('err.auth.provider'), 'error');
-      return;
-    }
-    if (result.value.startsWith('linked-')) {
-      const provider = PROVIDER_NAMES[result.value.slice(7)] || '';
-      toast(tr('acct.linkedToast', { provider }), '🔗');
-      openProfile();
-      return;
-    }
-    if (!state.user) {
-      openAuth('login');
-      showMessage(authMessage, tr('err.auth.expired'), 'error');
-      return;
-    }
-    const name = state.user.username || '';
-    if (result.value === 'new' || state.user.needsUsername) {
-      if (name) toast(tr('acct.welcome', { name }), '🦉');
-    } else {
-      toast(tr('acct.welcomeBack', { name }), '🦉');
-    }
-  }
 
   /* ---------- Show / hide password ---------- */
 
@@ -663,12 +555,7 @@
     const p = user.progress;
     paintAvatar($('#profile-avatar'), user);
     $('#profile-name').textContent = user.username || '—';
-    const providers = [];
-    if (user.providers.google) providers.push('Google');
-    if (user.providers.apple) providers.push('Apple');
-    if (user.providers.password) providers.push(tr('acct.email'));
-    $('#profile-email').textContent = [user.email, providers.length ? tr('acct.signedInWith', { list: providers.join(', ') }) : '']
-      .filter(Boolean).join(' · ');
+    $('#profile-email').textContent = user.email || '';
     /* Numeric dates: some browsers have no month names for Uzbek ("M11"). */
     const since = new Date(user.createdAt * 1000).toLocaleDateString(window.AceI18n.lang, { day: '2-digit', month: '2-digit', year: 'numeric' });
     $('#profile-since').textContent = tr('acct.memberSince', { date: since });
@@ -676,35 +563,8 @@
     $('#profile-xp').textContent = p.xp.toLocaleString(window.AceI18n.lang);
     $('#profile-streak').textContent = String(p.streak);
     $('#profile-tests').textContent = String(p.tests);
-    renderMethods();
+    $('#profile-recovery-note').hidden = Boolean(user.hasRecoveryCode);
   }
-
-  function renderMethods() {
-    const user = state.user;
-    if (!user) return;
-    document.querySelectorAll('#profile-methods [data-method]').forEach(row => {
-      const method = row.dataset.method;
-      const on = Boolean(user.providers[method]);
-      const stateNode = row.querySelector('[data-method-state]');
-      const action = row.querySelector('.method-action');
-      stateNode.classList.toggle('is-on', on);
-      if (method === 'password') {
-        stateNode.textContent = on ? '••••••••' : tr('acct.notSet');
-        action.textContent = on ? tr('acct.passwordChange') : tr('acct.passwordSet');
-        action.hidden = !user.email;
-        return;
-      }
-      const available = Boolean(state.config[method]);
-      stateNode.textContent = on ? tr('acct.linked') : (available ? '' : tr('acct.unavailable'));
-      action.hidden = on || !available;
-      action.disabled = false;
-      action.classList.remove('is-loading');
-    });
-  }
-
-  document.querySelectorAll('[data-link-provider]').forEach(button => {
-    button.addEventListener('click', () => goToProvider(button.dataset.linkProvider, true));
-  });
 
   const passwordForm = $('#password-form');
   const passwordMessage = $('#password-message');
@@ -714,11 +574,8 @@
     passwordForm.reset();
     hidePasswords(passwordForm);
     showMessage(passwordMessage, '');
-    $('#password-current-field').hidden = !state.user.providers.password;
     passwordForm.hidden = false;
-    window.setTimeout(() => {
-      (state.user.providers.password ? $('#password-current') : $('#password-new')).focus({ preventScroll: true });
-    }, 40);
+    window.setTimeout(() => $('#password-current').focus({ preventScroll: true }), 40);
   }
 
   $('#password-open')?.addEventListener('click', () => {
@@ -742,7 +599,6 @@
       const data = await api('/api/account/password', { current: $('#password-current').value, password });
       setUser(data.user, { quiet: true });
       passwordForm.hidden = true;
-      renderMethods();
       toast(tr('acct.passwordSaved'), '🔐');
     } catch (error) {
       showMessage(passwordMessage, error.message, 'error');
@@ -815,33 +671,98 @@
   });
   closeOnBackdrop(profileDialog);
 
-  /* ---------- Password reset ---------- */
+  /* ---------- Forgotten password ---------- */
 
+  /* Three steps share one dialog:
+     code    - email or username + the recovery code from sign-up + a new password (always works)
+     request - email me a reset link (only when the server can send email)
+     set     - choose a new password after opening the emailed link */
   const resetDialog = $('#reset-dialog');
   const resetMessage = $('#reset-message');
+  const resetSwitch = $('#reset-switch');
 
-  function openReset(token, email = '') {
-    state.resetToken = token;
-    resetDialog.dataset.step = token ? 'set' : 'request';
-    $('#reset-sub').textContent = token ? tr('acct.resetSetSub') : tr('acct.resetSub');
-    $('#reset-submit').textContent = token ? tr('acct.setPassword') : tr('acct.sendLink');
-    $('#reset-email').value = email;
-    $('#reset-password').value = '';
+  function setResetStep(step) {
+    resetDialog.dataset.step = step;
+    const texts = {
+      code: ['acct.recoverSub', 'acct.resetButton'],
+      request: ['acct.resetSub', 'acct.sendLink'],
+      set: ['acct.resetSetSub', 'acct.setPassword']
+    }[step];
+    $('#reset-sub').textContent = tr(texts[0]);
+    $('#reset-submit').textContent = tr(texts[1]);
+    resetSwitch.hidden = step === 'set' || !state.config.passwordReset;
+    resetSwitch.textContent = step === 'code' ? tr('acct.useEmailLink') : tr('acct.useRecoveryCode');
     showMessage(resetMessage, '');
-    openDialog(resetDialog);
   }
+
+  function openReset(token, identifier = '') {
+    state.resetToken = token;
+    $('#reset-form').reset();
+    hidePasswords(resetDialog);
+    $('#reset-identifier').value = identifier;
+    $('#reset-email').value = identifier.includes('@') ? identifier : '';
+    setResetStep(token ? 'set' : 'code');
+    openDialog(resetDialog);
+    window.setTimeout(() => {
+      const first = token ? $('#reset-password') : (identifier ? $('#reset-code') : $('#reset-identifier'));
+      first.focus({ preventScroll: true });
+    }, 80);
+  }
+
+  resetSwitch?.addEventListener('click', () => {
+    setResetStep(resetDialog.dataset.step === 'code' ? 'request' : 'code');
+  });
+
+  $('#reset-code')?.addEventListener('input', event => {
+    /* Tidy the code as it is typed: upper case, groups of four. */
+    const input = event.target;
+    const raw = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+    const grouped = raw.match(/.{1,4}/g)?.join('-') || '';
+    if (grouped !== input.value) input.value = grouped;
+  });
 
   $('#reset-form')?.addEventListener('submit', async event => {
     event.preventDefault();
+    const step = resetDialog.dataset.step;
+    const password = $('#reset-password').value;
+    showMessage(resetMessage, '');
+    if (step === 'code') {
+      if (!$('#reset-identifier').value.trim()) {
+        showMessage(resetMessage, tr('err.auth.recovery'), 'error');
+        $('#reset-identifier').focus();
+        return;
+      }
+      if ($('#reset-code').value.replace(/[^A-Za-z0-9]/g, '').length !== 16) {
+        showMessage(resetMessage, tr('acct.recoveryFormat'), 'error');
+        $('#reset-code').focus();
+        return;
+      }
+    }
+    if (step !== 'request' && password.length < 8) {
+      showMessage(resetMessage, tr('err.auth.password'), 'error');
+      $('#reset-password').focus();
+      return;
+    }
     const submit = $('#reset-submit');
     submit.disabled = true;
     try {
-      if (state.resetToken) {
-        const data = await api('/api/auth/reset', { token: state.resetToken, password: $('#reset-password').value });
+      if (step === 'set') {
+        const data = await api('/api/auth/reset', { token: state.resetToken, password });
         state.resetToken = '';
         resetDialog.close();
         setUser(data.user);
         toast(tr('acct.passwordChanged'), '🔐');
+      } else if (step === 'code') {
+        const data = await api('/api/auth/recover', {
+          identifier: $('#reset-identifier').value.trim(),
+          code: $('#reset-code').value,
+          password
+        });
+        resetDialog.close();
+        setUser(data.user, { quiet: true });
+        toast(tr('acct.passwordChanged'), '🔐');
+        if (data.recoveryCode) showRecoveryCode(data.recoveryCode, true);
+        loadBoard();
       } else {
         await api('/api/auth/forgot', { email: $('#reset-email').value.trim() });
         showMessage(resetMessage, tr('acct.linkSent'), 'ok');
@@ -854,6 +775,97 @@
   });
   $('#reset-close')?.addEventListener('click', () => resetDialog.close());
   closeOnBackdrop(resetDialog);
+
+  /* ---------- Recovery code ---------- */
+
+  const recoveryDialog = $('#recovery-dialog');
+  const recoveryMessage = $('#recovery-message');
+  const recoverySubmit = $('#recovery-submit');
+  let recoveryCode = '';
+
+  function showRecoveryCode(code, replaced = false) {
+    recoveryCode = code;
+    recoveryDialog.dataset.step = 'show';
+    $('#recovery-confirm').hidden = true;
+    $('#recovery-show').hidden = false;
+    $('#recovery-cancel').hidden = true;
+    $('#recovery-title').textContent = tr(replaced ? 'acct.recoveryNewTitle' : 'acct.recoveryTitle');
+    $('#recovery-code').textContent = code;
+    $('#recovery-saved').checked = false;
+    recoverySubmit.textContent = tr('acct.recoveryDone');
+    recoverySubmit.disabled = true;
+    showMessage(recoveryMessage, '');
+    openDialog(recoveryDialog);
+  }
+
+  function askForNewRecoveryCode() {
+    recoveryCode = '';
+    recoveryDialog.dataset.step = 'confirm';
+    $('#recovery-form').reset();
+    $('#recovery-confirm').hidden = false;
+    $('#recovery-show').hidden = true;
+    $('#recovery-cancel').hidden = false;
+    $('#recovery-title').textContent = tr('acct.recoveryNew');
+    recoverySubmit.textContent = tr('acct.recoveryCreate');
+    recoverySubmit.disabled = false;
+    showMessage(recoveryMessage, '');
+    openDialog(recoveryDialog);
+    window.setTimeout(() => $('#recovery-password').focus({ preventScroll: true }), 80);
+  }
+
+  $('#recovery-open')?.addEventListener('click', askForNewRecoveryCode);
+  $('#recovery-saved')?.addEventListener('change', event => {
+    recoverySubmit.disabled = !event.target.checked;
+  });
+  $('#recovery-copy')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(recoveryCode);
+      toast(tr('acct.copied'), '📋');
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents($('#recovery-code'));
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+    }
+  });
+  $('#recovery-download')?.addEventListener('click', () => {
+    const name = state.user && state.user.username ? state.user.username : '';
+    const text = `Aceminder\n${tr('acct.recoveryCode')}: ${recoveryCode}\n${name ? `${tr('acct.username')}: ${name}\n` : ''}`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    link.download = 'aceminder-recovery-code.txt';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  });
+  $('#recovery-cancel')?.addEventListener('click', () => recoveryDialog.close());
+  /* A fresh code must be acknowledged before the dialog goes away. */
+  recoveryDialog?.addEventListener('cancel', event => {
+    if (recoveryDialog.dataset.step === 'show') event.preventDefault();
+  });
+  closeOnBackdrop(recoveryDialog);
+  $('#recovery-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (recoveryDialog.dataset.step === 'show') {
+      if (!$('#recovery-saved').checked) return;
+      recoveryCode = '';
+      $('#recovery-code').textContent = '';
+      recoveryDialog.dataset.step = '';
+      recoveryDialog.close();
+      return;
+    }
+    recoverySubmit.disabled = true;
+    try {
+      const data = await api('/api/account/recovery-code', { password: $('#recovery-password').value });
+      setUser(data.user, { quiet: true });
+      if (profileDialog.open) renderProfile();
+      showRecoveryCode(data.recoveryCode, true);
+    } catch (error) {
+      showMessage(recoveryMessage, error.message, 'error');
+      recoverySubmit.disabled = false;
+    }
+  });
 
   /* ---------- Leaderboard ---------- */
 
@@ -980,20 +992,9 @@
   window.addEventListener('aceminder:language', () => {
     renderHeader();
     renderBoard();
-    if (authDialog?.open) {
-      setMode(state.mode);
-      renderSocial();
-    }
+    if (authDialog?.open) setMode(state.mode);
     if (profileDialog?.open) renderProfile();
-  });
-
-  window.addEventListener('hashchange', () => showAuthReturn(readAuthReturn()));
-
-  /* Pressing Back on the Google or Apple page restores this page from cache with busy buttons. */
-  window.addEventListener('pageshow', event => {
-    if (!event.persisted) return;
-    renderSocial();
-    renderMethods();
+    if (resetDialog?.open) setResetStep(resetDialog.dataset.step);
   });
 
   document.addEventListener('visibilitychange', () => {
@@ -1003,12 +1004,9 @@
   document.addEventListener('DOMContentLoaded', async () => {
     renderHeader();
     renderBoard();
-    const authReturn = readAuthReturn();
     await loadConfig();
-    renderSocial();
     await loadMe();
     loadBoard();
-    showAuthReturn(authReturn);
     const match = /^#reset=([A-Za-z0-9_-]{20,100})$/.exec(window.location.hash);
     if (match) {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);

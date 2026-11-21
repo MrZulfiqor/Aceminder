@@ -1,7 +1,6 @@
-"""Aceminder accounts: users, sessions, Google / Apple / email sign-in, XP and leaderboards.
+"""Aceminder accounts: users, sessions, email + password sign-in, XP and leaderboards.
 
-Only the Python standard library is used: SQLite for storage, scrypt for passwords and a
-small RS256 verifier for Google and Apple ID tokens. XP is calculated here on the server
+Only the Python standard library is used: SQLite for storage and scrypt for passwords. XP is calculated here on the server
 from tests the server itself generated, so the leaderboard cannot be faked from the browser.
 """
 
@@ -24,16 +23,14 @@ from datetime import date, datetime, timezone
 from email.message import EmailMessage
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlencode
-from urllib.request import Request, urlopen
+from urllib.parse import parse_qs
 
 ROOT = Path(__file__).resolve().parent
 SESSION_COOKIE = "aceminder_session"
 SESSION_SECONDS = 30 * 86400
 RESET_SECONDS = 3600
-OAUTH_COOKIE = "aceminder_oauth"
-OAUTH_SECONDS = 600
+RECOVERY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I mix-ups
+RECOVERY_LENGTH = 16
 TEST_KEEP_SECONDS = 30 * 86400
 USERNAME_PATTERN = re.compile(r"[^\W_][\w.]{2,19}", re.UNICODE)
 EMAIL_PATTERN = re.compile(r"[^@\s]{1,64}@[^@\s.]+(\.[^@\s.]+)+")
@@ -84,19 +81,10 @@ MULTIPLIERS = {
     "Too easy": 0.5, "Easy": 0.75, "Easy-Medium": 0.9, "Medium": 1.0,
     "Medium-Hard": 1.25, "Hard": 1.5, "Too Hard": 2.0,
 }
-GOOGLE_AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_JWKS = "https://www.googleapis.com/oauth2/v3/certs"
-GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
-APPLE_AUTHORIZE = "https://appleid.apple.com/auth/authorize"
-APPLE_JWKS = "https://appleid.apple.com/auth/keys"
-APPLE_ISSUERS = {"https://appleid.apple.com"}
-SHA256_DIGEST_INFO = bytes.fromhex("3031300d060960864801650304020105000420")
 
 _db_path = ROOT / "aceminder.db"
 _attempts = defaultdict(deque)
 _attempts_lock = threading.Lock()
-_jwks_cache = {}
-_jwks_lock = threading.Lock()
 
 
 class AccountError(Exception):
@@ -121,8 +109,6 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE COLLATE NOCASE,
     email TEXT UNIQUE COLLATE NOCASE,
     password_hash TEXT,
-    google_sub TEXT UNIQUE,
-    apple_sub TEXT UNIQUE,
     avatar TEXT NOT NULL DEFAULT '🦉',
     created_at INTEGER NOT NULL,
     xp INTEGER NOT NULL DEFAULT 0,
@@ -170,15 +156,6 @@ CREATE TABLE IF NOT EXISTS resets (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     expires_at INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS oauth_states (
-    state_hash TEXT PRIMARY KEY,
-    provider TEXT NOT NULL,
-    nonce TEXT NOT NULL,
-    link_user_id INTEGER,
-    user_id INTEGER,
-    outcome TEXT,
-    expires_at INTEGER NOT NULL
-);
 CREATE INDEX IF NOT EXISTS results_week ON results(week, user_id);
 CREATE INDEX IF NOT EXISTS results_user ON results(user_id, created_at);
 CREATE INDEX IF NOT EXISTS users_xp ON users(xp DESC);
@@ -199,6 +176,7 @@ def init(db_path=None):
             ("users", "avatar_image", "BLOB"),
             ("users", "avatar_mime", "TEXT"),
             ("users", "avatar_version", "INTEGER NOT NULL DEFAULT 0"),
+            ("users", "recovery_hash", "TEXT"),
             ("tests", "language", "TEXT"),
             ("tests", "files", "INTEGER NOT NULL DEFAULT 0"),
             ("tests", "formats", "INTEGER NOT NULL DEFAULT 1"),
@@ -213,7 +191,8 @@ def init(db_path=None):
         now = int(time.time())
         conn.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
         conn.execute("DELETE FROM resets WHERE expires_at < ?", (now,))
-        conn.execute("DELETE FROM oauth_states WHERE expires_at < ?", (now,))
+        # Left over from the removed Google / Apple sign-in.
+        conn.execute("DROP TABLE IF EXISTS oauth_states")
         conn.execute("DELETE FROM tests WHERE created_at < ?", (now - TEST_KEEP_SECONDS,))
 
 
@@ -355,79 +334,33 @@ def cookie_header(token, secure, max_age=SESSION_SECONDS):
     return "; ".join(parts)
 
 
-# ---------------------------------------------------------------- Google and Apple ID tokens
+# ---------------------------------------------------------------- recovery codes
 
-def b64url(data):
-    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
-
-
-def fetch_jwks(url, force=False):
-    with _jwks_lock:
-        cached = _jwks_cache.get(url)
-        if cached and not force and cached[0] > time.time():
-            return cached[1]
-    try:
-        with urlopen(Request(url, headers={"User-Agent": "Aceminder"}), timeout=15) as response:
-            keys = json.loads(response.read().decode("utf-8")).get("keys", [])
-    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
-        raise AccountError(502, "provider", "Could not reach the sign-in provider. Try again.") from error
-    with _jwks_lock:
-        _jwks_cache[url] = (time.time() + 3600, keys)
-    return keys
+def new_recovery_code():
+    """A one-time code the player saves at sign-up to reset a forgotten password without email."""
+    raw = "".join(secrets.choice(RECOVERY_ALPHABET) for _ in range(RECOVERY_LENGTH))
+    return "-".join(raw[i:i + 4] for i in range(0, RECOVERY_LENGTH, 4))
 
 
-def verify_id_token(token, jwks_url, issuers, audience, nonce=None):
-    """Check an RS256 JWT signature, issuer, audience and expiry; return its claims."""
-    bad = AccountError(401, "provider", "That sign-in did not work. Try again.")
-    if not isinstance(token, str) or token.count(".") != 2 or len(token) > 8000:
-        raise bad
-    head_b64, body_b64, sig_b64 = token.split(".")
-    try:
-        header = json.loads(b64url(head_b64))
-        claims = json.loads(b64url(body_b64))
-        signature = b64url(sig_b64)
-    except (ValueError, TypeError):
-        raise bad
-    if header.get("alg") != "RS256":
-        raise bad
+def normalise_recovery_code(value):
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"[\s-]", "", value).upper()[:64]
 
-    key = None
-    for force in (False, True):
-        key = next((k for k in fetch_jwks(jwks_url, force) if k.get("kid") == header.get("kid")), None)
-        if key:
-            break
-    if not key or key.get("kty") != "RSA":
-        raise bad
 
-    modulus = int.from_bytes(b64url(key["n"]), "big")
-    exponent = int.from_bytes(b64url(key["e"]), "big")
-    size = (modulus.bit_length() + 7) // 8
-    if len(signature) != size:
-        raise bad
-    decoded = pow(int.from_bytes(signature, "big"), exponent, modulus).to_bytes(size, "big")
-    digest = hashlib.sha256(f"{head_b64}.{body_b64}".encode("ascii")).digest()
-    suffix = SHA256_DIGEST_INFO + digest
-    expected = b"\x00\x01" + b"\xff" * (size - len(suffix) - 3) + b"\x00" + suffix
-    if not hmac.compare_digest(decoded, expected):
-        raise bad
+def recovery_hash(code):
+    # 16 random characters from 32 symbols is 80 bits, so a plain SHA-256 cannot be brute-forced.
+    return hashlib.sha256(("aceminder-recovery:" + normalise_recovery_code(code)).encode("utf-8")).hexdigest()
 
-    now = time.time()
-    audiences = claims.get("aud") if isinstance(claims.get("aud"), list) else [claims.get("aud")]
-    if claims.get("iss") not in issuers or audience not in audiences:
-        raise bad
-    if not isinstance(claims.get("exp"), (int, float)) or claims["exp"] < now - 60:
-        raise bad
-    if nonce is not None and not hmac.compare_digest(str(claims.get("nonce") or ""), nonce):
-        raise bad
-    return claims
+
+def issue_recovery_code(conn, user_id):
+    code = new_recovery_code()
+    conn.execute("UPDATE users SET recovery_hash = ? WHERE id = ?", (recovery_hash(code), user_id))
+    return code
 
 
 def provider_config():
-    google = env("GOOGLE_CLIENT_ID")
-    apple = env("APPLE_CLIENT_ID")
     return {
-        "google": {"clientId": google} if google else None,
-        "apple": {"clientId": apple} if apple else None,
         "email": True,
         "passwordReset": mail_configured(),
         "avatars": AVATARS,
@@ -465,199 +398,6 @@ def avatar_file(user_id):
     if not row or not row["avatar_image"]:
         return None
     return bytes(row["avatar_image"]), row["avatar_mime"] or "image/jpeg"
-
-
-def social_user(conn, provider, subject, email, email_verified):
-    column = "google_sub" if provider == "google" else "apple_sub"
-    row = conn.execute(f"SELECT * FROM users WHERE {column} = ?", (subject,)).fetchone()
-    if row:
-        return row, False
-    email_owner = None
-    if email:
-        email_owner = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-    if email_owner and email_verified and not email_owner[column]:
-        # The provider proved this person owns the email, so join the existing account.
-        # Email sign-ups are not verified, so if it has a password, drop it and its sessions in
-        # case someone else pre-registered this email. The owner can set a new one in the profile.
-        if email_owner["password_hash"]:
-            conn.execute("UPDATE users SET password_hash = NULL WHERE id = ?", (email_owner["id"],))
-            conn.execute("DELETE FROM sessions WHERE user_id = ?", (email_owner["id"],))
-        conn.execute(f"UPDATE users SET {column} = ? WHERE id = ?", (subject, email_owner["id"]))
-        return conn.execute("SELECT * FROM users WHERE id = ?", (email_owner["id"],)).fetchone(), False
-    # A new account. It only keeps the email when it is verified and not already in use.
-    keep_email = email if email and email_verified and email_owner is None else None
-    cursor = conn.execute(
-        f"INSERT INTO users ({column}, email, avatar, created_at) VALUES (?, ?, ?, ?)",
-        (subject, keep_email, clean_avatar(None), int(time.time())),
-    )
-    return conn.execute("SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)).fetchone(), True
-
-
-# ---------------------------------------------------------------- Google and Apple redirect sign-in
-#
-# Both providers use the same OpenID Connect redirect flow, so no third-party script runs on the
-# page and it works in installed (home-screen) apps, in-app browsers and with blockers:
-#   1. GET  /api/auth/<provider>/start     -> store state + nonce, set a state cookie, redirect out
-#   2. POST /api/auth/<provider>/callback  <- the provider posts the signed ID token (form_post)
-#   3. GET  /api/auth/finish?state=...     -> the state cookie must match; the session starts
-# Step 3 exists because cookies are not sent on the provider's cross-site POST in step 2.
-
-PROVIDERS = {
-    "google": {
-        "authorize": GOOGLE_AUTHORIZE, "jwks": GOOGLE_JWKS, "issuers": GOOGLE_ISSUERS,
-        "client_env": "GOOGLE_CLIENT_ID", "redirect_env": "GOOGLE_REDIRECT_URI",
-        "response_type": "id_token", "scope": "openid email profile",
-    },
-    "apple": {
-        "authorize": APPLE_AUTHORIZE, "jwks": APPLE_JWKS, "issuers": APPLE_ISSUERS,
-        "client_env": "APPLE_CLIENT_ID", "redirect_env": "APPLE_REDIRECT_URI",
-        "response_type": "code id_token", "scope": "name email",
-    },
-}
-
-
-def redirect_uri(provider, base_url):
-    return env(PROVIDERS[provider]["redirect_env"]) or f"{base_url.rstrip('/')}/api/auth/{provider}/callback"
-
-
-def oauth_cookie(value, secure, max_age=OAUTH_SECONDS):
-    parts = [f"{OAUTH_COOKIE}={value}", "Path=/api/auth/", "HttpOnly", "SameSite=Lax", f"Max-Age={max_age}"]
-    if secure:
-        parts.append("Secure")
-    return "; ".join(parts)
-
-
-def oauth_cookie_value(cookie_header_value):
-    if not cookie_header_value:
-        return ""
-    try:
-        cookie = SimpleCookie()
-        cookie.load(cookie_header_value)
-    except CookieError:
-        return ""
-    morsel = cookie.get(OAUTH_COOKIE)
-    return morsel.value if morsel else ""
-
-
-def oauth_start(provider, cookie, client_ip, secure, base_url, link=False):
-    """Return (status, location, set_cookies) that sends the browser to Google or Apple."""
-    spec = PROVIDERS.get(provider)
-    client_id = env(spec["client_env"]) if spec else ""
-    if not client_id:
-        return 303, "/#auth-error=notConfigured", []
-    try:
-        rate_limit(f"oauth:{client_ip}", limit=60)
-    except AccountError:
-        return 303, "/#auth-error=rate", []
-    user = current_user(cookie) if link else None
-    if link and user is None:
-        return 303, "/#auth-error=required", []
-    state = secrets.token_urlsafe(32)
-    nonce = secrets.token_urlsafe(24)
-    with connect() as conn:
-        conn.execute(
-            "INSERT INTO oauth_states (state_hash, provider, nonce, link_user_id, expires_at) VALUES (?, ?, ?, ?, ?)",
-            (token_hash(state), provider, nonce, user["id"] if user else None, int(time.time()) + OAUTH_SECONDS),
-        )
-    params = {
-        "client_id": client_id,
-        "redirect_uri": redirect_uri(provider, base_url),
-        "response_type": spec["response_type"],
-        "response_mode": "form_post",
-        "scope": spec["scope"],
-        "state": state,
-        "nonce": nonce,
-    }
-    if provider == "google":
-        params["prompt"] = "select_account"
-    return 302, f"{spec['authorize']}?{urlencode(params)}", [oauth_cookie(state, secure)]
-
-
-def oauth_callback(provider, form):
-    """Handle the provider's form POST. Returns the address to send the browser to next."""
-    def first(name):
-        values = form.get(name) or [""]
-        return values[0] if isinstance(values[0], str) else ""
-
-    state = first("state")
-    if not state or len(state) > 100 or provider not in PROVIDERS:
-        return "/#auth-error=expired"
-    with connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM oauth_states WHERE state_hash = ? AND provider = ? AND expires_at > ? AND outcome IS NULL",
-            (token_hash(state), provider, int(time.time())),
-        ).fetchone()
-    if row is None:
-        return "/#auth-error=expired"
-
-    def fail(code):
-        with connect() as conn:
-            conn.execute("DELETE FROM oauth_states WHERE state_hash = ?", (row["state_hash"],))
-        return f"/#auth-error={code}"
-
-    error = first("error")
-    if error:
-        cancelled = error in ("access_denied", "user_cancelled_authorize", "user_cancelled")
-        return fail("cancelled" if cancelled else "provider")
-    spec = PROVIDERS[provider]
-    try:
-        claims = verify_id_token(
-            first("id_token"), spec["jwks"], spec["issuers"], env(spec["client_env"]), nonce=row["nonce"]
-        )
-    except AccountError as problem:
-        return fail(problem.code)
-    subject = str(claims.get("sub") or "")
-    if not subject:
-        return fail("provider")
-    email = claims.get("email") if isinstance(claims.get("email"), str) else None
-    verified = claims.get("email_verified") in (True, "true")
-    column = "google_sub" if provider == "google" else "apple_sub"
-
-    with connect() as conn:
-        if row["link_user_id"]:
-            owner = conn.execute(f"SELECT id FROM users WHERE {column} = ?", (subject,)).fetchone()
-            if owner and owner["id"] != row["link_user_id"]:
-                conn.execute("DELETE FROM oauth_states WHERE state_hash = ?", (row["state_hash"],))
-                return "/#auth-error=linkedElsewhere"
-            target = conn.execute("SELECT id, email FROM users WHERE id = ?", (row["link_user_id"],)).fetchone()
-            if target is None:
-                conn.execute("DELETE FROM oauth_states WHERE state_hash = ?", (row["state_hash"],))
-                return "/#auth-error=required"
-            conn.execute(f"UPDATE users SET {column} = ? WHERE id = ?", (subject, target["id"]))
-            if not target["email"] and email and verified:
-                taken = conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone()
-                if not taken:
-                    conn.execute("UPDATE users SET email = ? WHERE id = ?", (email, target["id"]))
-            user_id, outcome = target["id"], "linked"
-        else:
-            user, created = social_user(conn, provider, subject, email, verified)
-            user_id, outcome = user["id"], "new" if created else "ok"
-        conn.execute(
-            "UPDATE oauth_states SET user_id = ?, outcome = ? WHERE state_hash = ?",
-            (user_id, outcome, row["state_hash"]),
-        )
-    return f"/api/auth/finish?state={state}"
-
-
-def oauth_finish(query, cookie, secure):
-    """Start the session once the state cookie proves this browser began the sign-in."""
-    state = (parse_qs(query).get("state") or [""])[0]
-    clear = oauth_cookie("", secure, max_age=0)
-    expected = oauth_cookie_value(cookie)
-    if not state or not expected or len(state) > 100 or not hmac.compare_digest(state, expected):
-        return "/#auth-error=expired", [clear]
-    with connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM oauth_states WHERE state_hash = ? AND expires_at > ? AND outcome IS NOT NULL",
-            (token_hash(state), int(time.time())),
-        ).fetchone()
-        if row is None:
-            return "/#auth-error=expired", [clear]
-        conn.execute("DELETE FROM oauth_states WHERE state_hash = ?", (row["state_hash"],))
-        if row["outcome"] == "linked":
-            return f"/#auth=linked-{row['provider']}", [clear]
-        token = create_session(conn, row["user_id"])
-    return f"/#auth={row['outcome']}", [clear, cookie_header(token, secure)]
 
 
 # ---------------------------------------------------------------- XP, levels and badges
@@ -784,11 +524,7 @@ def public_user(row, stats=None):
         "avatarUrl": avatar_url(row),
         "email": row["email"],
         "needsUsername": not row["username"],
-        "providers": {
-            "password": bool(row["password_hash"]),
-            "google": bool(row["google_sub"]),
-            "apple": bool(row["apple_sub"]),
-        },
+        "hasRecoveryCode": bool(row["recovery_hash"]),
         "createdAt": row["created_at"],
         "progress": progress(row, stats),
     }
@@ -984,10 +720,13 @@ def respond(status, payload, cookie=None):
     return status, payload, cookie
 
 
-def signed_in(conn, user_id, secure, status=200, created=False):
+def signed_in(conn, user_id, secure, status=200, created=False, recovery_code=None):
     token = create_session(conn, user_id)
     row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    return respond(status, {"user": user_payload(conn, row), "created": created}, cookie_header(token, secure))
+    payload = {"user": user_payload(conn, row), "created": created}
+    if recovery_code:
+        payload["recoveryCode"] = recovery_code
+    return respond(status, payload, cookie_header(token, secure))
 
 
 def route(method, path, query, body, cookie, client_ip, secure, base_url):
@@ -1048,18 +787,16 @@ def _route(method, path, query, body, cookie, client_ip, secure, base_url):
         username = clean_username(body.get("username"))
         avatar = clean_avatar(body.get("avatar"))
         with connect() as conn:
-            existing = conn.execute("SELECT password_hash FROM users WHERE email = ?", (email,)).fetchone()
-            if existing:
-                if existing["password_hash"]:
-                    raise AccountError(409, "emailUsed", "An account with this email already exists. Log in instead.")
-                raise AccountError(409, "socialOnly", "This email uses Google or Apple sign-in. Use that button instead.")
+            if conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
+                raise AccountError(409, "emailUsed", "An account with this email already exists. Log in instead.")
             if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
                 raise AccountError(409, "taken", "That username is already taken.")
             cursor = conn.execute(
                 "INSERT INTO users (username, email, password_hash, avatar, created_at) VALUES (?, ?, ?, ?, ?)",
                 (username, email, hash_password(password), avatar, int(time.time())),
             )
-            return signed_in(conn, cursor.lastrowid, secure, 201, created=True)
+            code = issue_recovery_code(conn, cursor.lastrowid)
+            return signed_in(conn, cursor.lastrowid, secure, 201, created=True, recovery_code=code)
 
     if path == "/api/auth/login":
         rate_limit(f"login-ip:{client_ip}", limit=60, window=600)
@@ -1073,12 +810,9 @@ def _route(method, path, query, body, cookie, client_ip, secure, base_url):
             row = conn.execute(
                 "SELECT * FROM users WHERE email = ? OR username = ?", (identifier, identifier)
             ).fetchone()
-            if row is None:
+            if row is None or not row["password_hash"]:
                 burn_password_check(password)
                 raise AccountError(401, "wrong", "Wrong email or password.")
-            if not row["password_hash"]:
-                burn_password_check(password)
-                raise AccountError(401, "socialOnly", "This account uses Google or Apple sign-in. Use that button instead.")
             if not verify_password(password, row["password_hash"]):
                 raise AccountError(401, "wrong", "Wrong email or password.")
             return signed_in(conn, row["id"], secure)
@@ -1135,8 +869,42 @@ def _route(method, path, query, body, cookie, client_ip, secure, base_url):
             conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["user_id"],))
             return signed_in(conn, row["user_id"], secure)
 
+    if path == "/api/auth/recover":
+        # Forgot password without email: email or username + the recovery code from sign-up.
+        rate_limit(f"recover:{client_ip}", limit=20, window=900)
+        identifier = body.get("identifier") if isinstance(body.get("identifier"), str) else ""
+        identifier = identifier.strip()
+        code = normalise_recovery_code(body.get("code"))
+        password = clean_password(body.get("password"))
+        bad = AccountError(400, "recovery", "That email/username and recovery code do not match.")
+        if not identifier or len(identifier) > 254 or len(code) != RECOVERY_LENGTH:
+            raise bad
+        rate_limit(f"recover:{identifier.casefold()}", limit=6, window=900)
+        with connect() as conn:
+            row = conn.execute(
+                "SELECT id, recovery_hash FROM users WHERE email = ? OR username = ?", (identifier, identifier)
+            ).fetchone()
+            if not row or not row["recovery_hash"] or not hmac.compare_digest(row["recovery_hash"], recovery_hash(code)):
+                raise bad
+            conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(password), row["id"]))
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
+            conn.execute("DELETE FROM resets WHERE user_id = ?", (row["id"],))
+            # The code is used up; hand out a fresh one.
+            fresh = issue_recovery_code(conn, row["id"])
+            return signed_in(conn, row["id"], secure, recovery_code=fresh)
+
     if user is None:
         raise AccountError(401, "required", "Sign in first.")
+
+    if path == "/api/account/recovery-code":
+        rate_limit(f"recovery-new:{user['id']}", limit=8, window=900)
+        password = body.get("password") if isinstance(body.get("password"), str) else ""
+        if not user["password_hash"] or not verify_password(password, user["password_hash"]):
+            raise AccountError(401, "currentWrong", "Your password is not right.")
+        with connect() as conn:
+            code = issue_recovery_code(conn, user["id"])
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+            return respond(200, {"user": user_payload(conn, row), "recoveryCode": code})
 
     if path == "/api/account/profile":
         updates, values = [], []
@@ -1159,13 +927,9 @@ def _route(method, path, query, body, cookie, client_ip, secure, base_url):
     if path == "/api/account/password":
         rate_limit(f"password:{user['id']}", limit=8, window=900)
         new_password = clean_password(body.get("password"))
-        if user["password_hash"]:
-            current = body.get("current") if isinstance(body.get("current"), str) else ""
-            if not verify_password(current, user["password_hash"]):
-                raise AccountError(401, "currentWrong", "Your current password is not right.")
-        email = user["email"]
-        if not email:
-            raise AccountError(400, "needEmail", "Add an email to your account before setting a password.")
+        current = body.get("current") if isinstance(body.get("current"), str) else ""
+        if not user["password_hash"] or not verify_password(current, user["password_hash"]):
+            raise AccountError(401, "currentWrong", "Your current password is not right.")
         token = session_token(cookie)
         with connect() as conn:
             conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_password), user["id"]))

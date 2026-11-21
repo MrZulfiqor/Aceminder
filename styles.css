@@ -1855,25 +1855,6 @@ select option { background: var(--surface-solid); color: var(--text); }
   box-shadow: 0 6px 18px -8px rgba(246, 196, 83, .8);
 }
 
-.social-buttons { display: grid; gap: 10px; }
-.social-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  min-height: 50px;
-  border-radius: 999px;
-  font-weight: 700;
-  font-size: 15px;
-  transition: transform .15s var(--ease), opacity .2s;
-}
-.social-button svg { width: 20px; height: 20px; }
-.social-button--google { border: 1px solid #dadce0; background: #fff; color: #1f1f1f; }
-.social-button--apple { border: 1px solid rgba(255, 255, 255, .25); background: #000; color: #fff; }
-.social-button:not(:disabled):active { transform: scale(.98); }
-.social-button:disabled { opacity: .45; cursor: not-allowed; }
-.social-button.is-loading { opacity: .7; cursor: progress; }
-
 .password-wrap { position: relative; display: block; }
 .password-wrap input { padding-right: 52px; }
 .password-toggle {
@@ -1895,35 +1876,6 @@ select option { background: var(--surface-solid); color: var(--text); }
 .password-toggle[aria-pressed="true"] svg { opacity: .85; }
 .password-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 
-.method-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.method-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 8px 8px 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, .03);
-}
-.method-row > strong { font-size: 14px; }
-.method-icon {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, .06);
-  color: var(--text);
-  flex: none;
-}
-.method-icon svg { width: 18px; height: 18px; }
-.method-icon--google { background: #fff; }
-.method-icon--apple { background: #000; color: #fff; }
-.method-state { flex: 1; min-width: 0; color: var(--faint); font-size: 12.5px; font-weight: 600; }
-.method-state.is-on { color: var(--green); }
-.method-action.button { min-height: 38px; padding: 0 14px; font-size: 13px; }
-.method-row[hidden] { display: none; }
 .password-form {
   padding: 14px;
   border: 1px solid var(--border-strong);
@@ -1933,26 +1885,39 @@ select option { background: var(--surface-solid); color: var(--text); }
 .password-form[hidden] { display: none; }
 .password-form-actions { display: flex; gap: 8px; }
 .password-form-actions .button { flex: 1; min-height: 44px; }
-.social-note { color: var(--faint); font-size: 12.5px; text-align: center; }
-
-.auth-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--faint);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
 .auth-form { display: grid; gap: 14px; }
 .auth-submit { width: 100%; }
 #auth-dialog[data-mode="signup"] .login-only,
 #auth-dialog[data-mode="login"] .signup-only { display: none; }
+#reset-dialog[data-step="code"] .reset-request,
 #reset-dialog[data-step="request"] .reset-set,
-#reset-dialog[data-step="set"] .reset-request { display: none; }
+#reset-dialog[data-step="request"] .reset-code-only,
+#reset-dialog[data-step="set"] .reset-request,
+#reset-dialog[data-step="set"] .reset-code-only { display: none; }
+
+.recovery-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.recovery-show, .recovery-confirm { display: grid; gap: 14px; }
+.recovery-show[hidden], .recovery-confirm[hidden] { display: none; }
+.recovery-code {
+  display: block;
+  padding: 16px 12px;
+  border: 1.5px dashed var(--gold);
+  border-radius: 14px;
+  background: rgba(246, 196, 83, .08);
+  color: var(--gold-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: clamp(17px, 5vw, 22px);
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-align: center;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.recovery-check { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.recovery-check input { width: 20px; height: 20px; accent-color: var(--gold); flex: none; }
+.profile-recovery-note { color: var(--gold-2); }
+.profile-recovery-note[hidden] { display: none; }
 
 .name-status { color: var(--faint); font-size: 12.5px; font-weight: 500; }
 .name-status.is-good { color: var(--green); font-weight: 700; }

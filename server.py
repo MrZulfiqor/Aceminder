@@ -315,22 +315,6 @@ def send_json(handler, status, payload, set_cookie=None):
         pass
 
 
-def send_redirect(handler, status, location, cookies=()):
-    try:
-        handler.send_response(status)
-        handler.send_header("Location", location)
-        handler.send_header("Content-Length", "0")
-        for cookie in cookies:
-            handler.send_header("Set-Cookie", cookie)
-        handler.end_headers()
-    except (BrokenPipeError, ConnectionResetError):
-        pass
-
-
-OAUTH_START = re.compile(r"/api/auth/(google|apple)/start")
-OAUTH_CALLBACK = re.compile(r"/api/auth/(google|apple)/callback")
-
-
 def validate_payload(payload):
     if not isinstance(payload, dict):
         return None, "The request must be a JSON object."
@@ -1136,12 +1120,7 @@ class AceminderHandler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
-        # Google and Apple sign-in need to see which site sent the visitor, so the origin (never the
-        # full address) is shared with other sites. Plain-http local testing needs the looser policy.
-        self.send_header(
-            "Referrer-Policy",
-            "strict-origin-when-cross-origin" if self.is_secure() else "no-referrer-when-downgrade",
-        )
+        self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
@@ -1272,19 +1251,6 @@ class AceminderHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         split = urlsplit(self.path)
         path = split.path
-        start = OAUTH_START.fullmatch(path)
-        if start:
-            link = (parse_qs(split.query).get("link") or [""])[0] == "1"
-            status, location, cookies = accounts.oauth_start(
-                start.group(1), self.headers.get("Cookie"), self.client_ip(),
-                self.is_secure(), self.base_url(), link=link,
-            )
-            send_redirect(self, status, location, cookies)
-            return
-        if path == "/api/auth/finish":
-            location, cookies = accounts.oauth_finish(split.query, self.headers.get("Cookie"), self.is_secure())
-            send_redirect(self, 303, location, cookies)
-            return
         if self.is_account_path(path):
             self.account_route("GET", path, split.query, None)
             return
@@ -1335,29 +1301,8 @@ class AceminderHandler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
-    def handle_oauth_callback(self, provider):
-        """Google or Apple posts the signed ID token here as a form (a cross-site POST by design)."""
-        try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            content_length = -1
-        if not 0 < content_length <= 32 * 1024:
-            send_redirect(self, 303, "/#auth-error=provider")
-            return
-        try:
-            form = parse_qs(self.rfile.read(content_length).decode("utf-8"), keep_blank_values=True)
-            location = accounts.oauth_callback(provider, form)
-        except Exception:
-            traceback.print_exc()
-            location = "/#auth-error=provider"
-        send_redirect(self, 303, location)
-
     def do_POST(self):
         path = urlsplit(self.path).path
-        callback = OAUTH_CALLBACK.fullmatch(path)
-        if callback:
-            self.handle_oauth_callback(callback.group(1))
-            return
         account_path = self.is_account_path(path)
         if not account_path and path not in ("/api/generate", "/api/grade", "/api/check-key", "/api/upload"):
             send_json(self, 404, {"error": "Endpoint not found."})
@@ -1522,7 +1467,7 @@ def main():
     load_env_file(ROOT / ".env")
     accounts.init()
     # 127.0.0.1 keeps the site private to this computer. Set HOST=0.0.0.0 to serve it on a network
-    # or behind a reverse proxy (Apple sign-in needs a public HTTPS address).
+    # or behind a reverse proxy.
     host = os.environ.get("HOST", "").strip() or "127.0.0.1"
     try:
         port = int(os.environ.get("PORT", "8000"))
@@ -1548,12 +1493,9 @@ def main():
             "No shared key is set, so each visitor must add their own Gemini API key in the browser. "
             f"To let everyone run on this computer's key, add {API_KEY_ENV}=... to .env and restart."
         )
-    providers = accounts.provider_config()
     print(
-        "Accounts: email sign-up is on"
-        + (", Google sign-in is on" if providers["google"] else ", Google sign-in is off (set GOOGLE_CLIENT_ID)")
-        + (", Apple sign-in is on" if providers["apple"] else ", Apple sign-in is off (set APPLE_CLIENT_ID)")
-        + (", password reset email is on." if providers["passwordReset"] else ", password reset email is off (set SMTP_HOST and SMTP_FROM).")
+        "Accounts: email + password sign-up is on, forgot-password recovery codes are on"
+        + (", password reset email is on." if accounts.mail_configured() else ", reset by email is off (set SMTP_HOST and SMTP_FROM).")
     )
 
     try:
