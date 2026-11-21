@@ -93,7 +93,25 @@
     'err.auth.required': 'Sign in first.',
     'err.auth.reset': 'This reset link is invalid or has expired.',
     'err.auth.mail': 'Password reset by email is not set up on this server yet.',
-    'err.auth.generic': 'Something went wrong. Try again.'
+    'err.auth.generic': 'Something went wrong. Try again.',
+    'acct.showPassword': "Show password",
+    'acct.hidePassword': "Hide password",
+    'acct.methods': "Sign-in methods",
+    'acct.linked': "Connected",
+    'acct.link': "Connect",
+    'acct.notSet': "Not set",
+    'acct.unavailable': "Not available on this server",
+    'acct.passwordChange': "Change",
+    'acct.passwordSet': "Set password",
+    'acct.currentPassword': "Current password",
+    'acct.savePassword': "Save password",
+    'acct.passwordSaved': "Password saved. Other devices were signed out.",
+    'acct.linkedToast': "{provider} is now connected to your account.",
+    'err.auth.cancelled': "Sign-in was cancelled.",
+    'err.auth.expired': "That sign-in timed out or was started in another tab. Try again.",
+    'err.auth.linkedElsewhere': "That Google or Apple account is already used by a different Aceminder account.",
+    'err.auth.currentWrong': "Your current password is not right.",
+    'err.auth.needEmail': "Add an email to your account before setting a password."
   });
 
   add('uz', {
@@ -181,7 +199,25 @@
     'err.auth.required': 'Avval tizimga kiring.',
     'err.auth.reset': 'Bu havola noto‘g‘ri yoki muddati o‘tgan.',
     'err.auth.mail': 'Email orqali parolni tiklash bu serverda hali sozlanmagan.',
-    'err.auth.generic': 'Nimadir xato ketdi. Qayta urining.'
+    'err.auth.generic': 'Nimadir xato ketdi. Qayta urining.',
+    'acct.showPassword': "Parolni ko‘rsatish",
+    'acct.hidePassword': "Parolni yashirish",
+    'acct.methods': "Kirish usullari",
+    'acct.linked': "Ulangan",
+    'acct.link': "Ulash",
+    'acct.notSet': "O‘rnatilmagan",
+    'acct.unavailable': "Bu serverda mavjud emas",
+    'acct.passwordChange': "O‘zgartirish",
+    'acct.passwordSet': "Parol o‘rnatish",
+    'acct.currentPassword': "Joriy parol",
+    'acct.savePassword': "Parolni saqlash",
+    'acct.passwordSaved': "Parol saqlandi. Boshqa qurilmalardan chiqildi.",
+    'acct.linkedToast': "{provider} hisobingizga ulandi.",
+    'err.auth.cancelled': "Kirish bekor qilindi.",
+    'err.auth.expired': "Kirish vaqti tugadi yoki boshqa oynada boshlangan. Qaytadan urinib ko‘ring.",
+    'err.auth.linkedElsewhere': "Bu Google yoki Apple hisobi boshqa Aceminder hisobiga ulangan.",
+    'err.auth.currentWrong': "Joriy parol noto‘g‘ri.",
+    'err.auth.needEmail': "Parol o‘rnatishdan oldin hisobingizga email qo‘shing."
   });
 
   add('ru', {
@@ -269,7 +305,25 @@
     'err.auth.required': 'Сначала войдите.',
     'err.auth.reset': 'Ссылка недействительна или устарела.',
     'err.auth.mail': 'Сброс пароля по email на этом сервере пока не настроен.',
-    'err.auth.generic': 'Что-то пошло не так. Попробуйте ещё раз.'
+    'err.auth.generic': 'Что-то пошло не так. Попробуйте ещё раз.',
+    'acct.showPassword': "Показать пароль",
+    'acct.hidePassword': "Скрыть пароль",
+    'acct.methods': "Способы входа",
+    'acct.linked': "Подключено",
+    'acct.link': "Подключить",
+    'acct.notSet': "Не задан",
+    'acct.unavailable': "Недоступно на этом сервере",
+    'acct.passwordChange': "Изменить",
+    'acct.passwordSet': "Задать пароль",
+    'acct.currentPassword': "Текущий пароль",
+    'acct.savePassword': "Сохранить пароль",
+    'acct.passwordSaved': "Пароль сохранён. На других устройствах выполнен выход.",
+    'acct.linkedToast': "{provider} подключён к вашему аккаунту.",
+    'err.auth.cancelled': "Вход отменён.",
+    'err.auth.expired': "Время входа истекло или он был начат в другой вкладке. Попробуйте ещё раз.",
+    'err.auth.linkedElsewhere': "Этот аккаунт Google или Apple уже привязан к другому аккаунту Aceminder.",
+    'err.auth.currentWrong': "Текущий пароль неверен.",
+    'err.auth.needEmail': "Добавьте email в аккаунт, прежде чем задавать пароль."
   });
 
   add('es', {
@@ -357,7 +411,25 @@
     'err.auth.required': 'Primero inicia sesión.',
     'err.auth.reset': 'El enlace no es válido o ha caducado.',
     'err.auth.mail': 'El restablecimiento por email aún no está configurado en este servidor.',
-    'err.auth.generic': 'Algo salió mal. Inténtalo de nuevo.'
+    'err.auth.generic': 'Algo salió mal. Inténtalo de nuevo.',
+    'acct.showPassword': "Mostrar contraseña",
+    'acct.hidePassword': "Ocultar contraseña",
+    'acct.methods': "Métodos de inicio de sesión",
+    'acct.linked': "Conectado",
+    'acct.link': "Conectar",
+    'acct.notSet': "Sin definir",
+    'acct.unavailable': "No disponible en este servidor",
+    'acct.passwordChange': "Cambiar",
+    'acct.passwordSet': "Crear contraseña",
+    'acct.currentPassword': "Contraseña actual",
+    'acct.savePassword': "Guardar contraseña",
+    'acct.passwordSaved': "Contraseña guardada. Se cerró la sesión en otros dispositivos.",
+    'acct.linkedToast': "{provider} ya está conectado a tu cuenta.",
+    'err.auth.cancelled': "Se canceló el inicio de sesión.",
+    'err.auth.expired': "El inicio de sesión caducó o empezó en otra pestaña. Inténtalo de nuevo.",
+    'err.auth.linkedElsewhere': "Esa cuenta de Google o Apple ya está vinculada a otra cuenta de Aceminder.",
+    'err.auth.currentWrong': "Tu contraseña actual no es correcta.",
+    'err.auth.needEmail': "Añade un correo a tu cuenta antes de crear una contraseña."
   });
 
   add('de', {
@@ -445,7 +517,25 @@
     'err.auth.required': 'Bitte zuerst anmelden.',
     'err.auth.reset': 'Dieser Link ist ungültig oder abgelaufen.',
     'err.auth.mail': 'Passwort-Zurücksetzen per E-Mail ist auf diesem Server noch nicht eingerichtet.',
-    'err.auth.generic': 'Etwas ist schiefgelaufen. Versuch es noch einmal.'
+    'err.auth.generic': 'Etwas ist schiefgelaufen. Versuch es noch einmal.',
+    'acct.showPassword': "Passwort anzeigen",
+    'acct.hidePassword': "Passwort verbergen",
+    'acct.methods': "Anmeldemethoden",
+    'acct.linked': "Verbunden",
+    'acct.link': "Verbinden",
+    'acct.notSet': "Nicht festgelegt",
+    'acct.unavailable': "Auf diesem Server nicht verfügbar",
+    'acct.passwordChange': "Ändern",
+    'acct.passwordSet': "Passwort festlegen",
+    'acct.currentPassword': "Aktuelles Passwort",
+    'acct.savePassword': "Passwort speichern",
+    'acct.passwordSaved': "Passwort gespeichert. Andere Geräte wurden abgemeldet.",
+    'acct.linkedToast': "{provider} ist jetzt mit deinem Konto verbunden.",
+    'err.auth.cancelled': "Die Anmeldung wurde abgebrochen.",
+    'err.auth.expired': "Die Anmeldung ist abgelaufen oder wurde in einem anderen Tab gestartet. Versuch es noch einmal.",
+    'err.auth.linkedElsewhere': "Dieses Google- oder Apple-Konto gehört bereits zu einem anderen Aceminder-Konto.",
+    'err.auth.currentWrong': "Dein aktuelles Passwort stimmt nicht.",
+    'err.auth.needEmail': "Füge deinem Konto eine E-Mail hinzu, bevor du ein Passwort festlegst."
   });
 
   add('fr', {
@@ -533,6 +623,24 @@
     'err.auth.required': 'Connecte-toi d’abord.',
     'err.auth.reset': 'Ce lien est invalide ou a expiré.',
     'err.auth.mail': 'La réinitialisation par email n’est pas encore configurée sur ce serveur.',
-    'err.auth.generic': 'Une erreur est survenue. Réessaie.'
+    'err.auth.generic': 'Une erreur est survenue. Réessaie.',
+    'acct.showPassword': "Afficher le mot de passe",
+    'acct.hidePassword': "Masquer le mot de passe",
+    'acct.methods': "Méthodes de connexion",
+    'acct.linked': "Connecté",
+    'acct.link': "Connecter",
+    'acct.notSet': "Non défini",
+    'acct.unavailable': "Indisponible sur ce serveur",
+    'acct.passwordChange': "Modifier",
+    'acct.passwordSet': "Créer un mot de passe",
+    'acct.currentPassword': "Mot de passe actuel",
+    'acct.savePassword': "Enregistrer",
+    'acct.passwordSaved': "Mot de passe enregistré. Les autres appareils ont été déconnectés.",
+    'acct.linkedToast': "{provider} est maintenant connecté à ton compte.",
+    'err.auth.cancelled': "La connexion a été annulée.",
+    'err.auth.expired': "La connexion a expiré ou a été lancée dans un autre onglet. Réessaie.",
+    'err.auth.linkedElsewhere': "Ce compte Google ou Apple est déjà lié à un autre compte Aceminder.",
+    'err.auth.currentWrong': "Ton mot de passe actuel est incorrect.",
+    'err.auth.needEmail': "Ajoute un e-mail à ton compte avant de créer un mot de passe."
   });
 })();

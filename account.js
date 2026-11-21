@@ -184,10 +184,10 @@
     authPassword.autocomplete = state.mode === 'signup' ? 'new-password' : 'current-password';
     authUsername.required = state.mode === 'signup';
     showMessage(authMessage, '');
-    renderGoogleButton();
   }
 
   function openAuth(mode = 'signup') {
+    hidePasswords(authDialog);
     openDialog(authDialog);
     setMode(mode);
     renderSocial();
@@ -274,6 +274,7 @@
 
   function signedIn(data) {
     authForm.reset();
+    hidePasswords(authDialog);
     authDialog.close();
     setUser(data.user);
     const name = data.user.username || '';
@@ -301,90 +302,107 @@
 
   /* ---------- Google and Apple ---------- */
 
-  let googleReady = false;
-  async function setupGoogle() {
-    if (!state.config.google || googleReady) return;
-    try {
-      await loadScript('https://accounts.google.com/gsi/client');
-      window.google.accounts.id.initialize({
-        client_id: state.config.google.clientId,
-        callback: response => socialSignIn('/api/auth/google', { credential: response.credential }),
-        ux_mode: 'popup',
-        auto_select: false,
-        itp_support: true
-      });
-      googleReady = true;
-      renderGoogleButton();
-    } catch {
-      googleReady = false;
-    }
-  }
-
-  function renderGoogleButton() {
-    const slot = $('#google-slot');
-    if (!slot || !googleReady || !authDialog.open) return;
-    slot.replaceChildren();
-    slot.hidden = false;
-    $('#google-fallback').hidden = true;
-    window.google.accounts.id.renderButton(slot, {
-      theme: 'filled_black',
-      size: 'large',
-      shape: 'pill',
-      text: state.mode === 'signup' ? 'signup_with' : 'signin_with',
-      logo_alignment: 'center',
-      width: Math.max(220, Math.min(400, Math.round(slot.parentElement.clientWidth))),
-      locale: window.AceI18n.lang
-    });
-  }
+  /* Both use a full-page redirect handled by the server (see accounts.py), so they work in
+     installed home-screen apps, in-app browsers and with content blockers. The server sends
+     the browser back to /#auth=... or /#auth-error=... when it is done. */
+  const PROVIDER_NAMES = { google: 'Google', apple: 'Apple' };
 
   function renderSocial() {
     const google = Boolean(state.config.google);
     const apple = Boolean(state.config.apple);
-    const fallback = $('#google-fallback');
-    fallback.hidden = google && googleReady;
-    fallback.disabled = !google;
-    fallback.title = google ? '' : tr('acct.notSetUp');
-    $('#google-slot').hidden = !(google && googleReady);
-    const appleButton = $('#apple-button');
-    appleButton.disabled = !apple;
-    appleButton.title = apple ? '' : tr('acct.notSetUp');
+    [['#google-button', google], ['#apple-button', apple]].forEach(([selector, on]) => {
+      const button = $(selector);
+      if (!button) return;
+      button.disabled = !on;
+      button.title = on ? '' : tr('acct.notSetUp');
+      button.classList.remove('is-loading');
+    });
     $('#social-note').hidden = google && apple;
-    if (google) setupGoogle();
   }
 
-  $('#google-fallback')?.addEventListener('click', async () => {
-    if (!state.config.google) return;
-    await setupGoogle();
-    if (googleReady) window.google.accounts.id.prompt();
+  function goToProvider(provider, link) {
+    if (!state.config[provider]) {
+      showMessage(authMessage, tr('err.auth.notConfigured'), 'error');
+      return;
+    }
+    window.AceDevice?.vibrate(8);
+    document.querySelectorAll(`[data-provider="${provider}"], [data-link-provider="${provider}"]`).forEach(button => {
+      button.classList.add('is-loading');
+      button.disabled = true;
+    });
+    window.location.assign(`/api/auth/${provider}/start${link ? '?link=1' : ''}`);
+  }
+
+  document.querySelectorAll('.social-button[data-provider]').forEach(button => {
+    button.addEventListener('click', () => goToProvider(button.dataset.provider, false));
   });
 
-  $('#apple-button')?.addEventListener('click', async () => {
-    const config = state.config.apple;
-    if (!config) return;
-    try {
-      await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
-      window.AppleID.auth.init({
-        clientId: config.clientId,
-        scope: 'name email',
-        redirectURI: config.redirectUri || `${window.location.origin}/`,
-        usePopup: true
-      });
-      const result = await window.AppleID.auth.signIn();
-      const idToken = result && result.authorization && result.authorization.id_token;
-      if (idToken) await socialSignIn('/api/auth/apple', { idToken });
-    } catch (error) {
-      if (error && error.error === 'popup_closed_by_user') return;
-      showMessage(authMessage, tr('err.auth.provider'), 'error');
+  /* Coming back from Google or Apple */
+  function readAuthReturn() {
+    const match = /^#auth(-error)?=([A-Za-z-]{1,40})$/.exec(window.location.hash);
+    if (!match) return null;
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    return { error: Boolean(match[1]), value: match[2] };
+  }
+
+  function showAuthReturn(result) {
+    if (!result) return;
+    if (result.error) {
+      if (result.value === 'cancelled') {
+        toast(tr('err.auth.cancelled'), '👋');
+        return;
+      }
+      if (state.user && result.value === 'linkedElsewhere') {
+        openProfile();
+        toast(tr('err.auth.linkedElsewhere'), '⚠️');
+        return;
+      }
+      openAuth('login');
+      const key = `err.auth.${result.value}`;
+      const text = tr(key);
+      showMessage(authMessage, text !== key ? text : tr('err.auth.provider'), 'error');
+      return;
     }
+    if (result.value.startsWith('linked-')) {
+      const provider = PROVIDER_NAMES[result.value.slice(7)] || '';
+      toast(tr('acct.linkedToast', { provider }), '🔗');
+      openProfile();
+      return;
+    }
+    if (!state.user) {
+      openAuth('login');
+      showMessage(authMessage, tr('err.auth.expired'), 'error');
+      return;
+    }
+    const name = state.user.username || '';
+    if (result.value === 'new' || state.user.needsUsername) {
+      if (name) toast(tr('acct.welcome', { name }), '🦉');
+    } else {
+      toast(tr('acct.welcomeBack', { name }), '🦉');
+    }
+  }
+
+  /* ---------- Show / hide password ---------- */
+
+  document.querySelectorAll('[data-toggle-password]').forEach(button => {
+    button.addEventListener('click', () => {
+      const input = document.getElementById(button.dataset.togglePassword);
+      if (!input) return;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      button.setAttribute('aria-pressed', show ? 'true' : 'false');
+      button.setAttribute('aria-label', tr(show ? 'acct.hidePassword' : 'acct.showPassword'));
+      input.focus({ preventScroll: true });
+    });
   });
 
-  async function socialSignIn(path, body) {
-    showMessage(authMessage, tr('acct.checking'), 'ok');
-    try {
-      signedIn(await api(path, body));
-    } catch (error) {
-      showMessage(authMessage, error.message, 'error');
-    }
+  function hidePasswords(root) {
+    root?.querySelectorAll('[data-toggle-password]').forEach(button => {
+      const input = document.getElementById(button.dataset.togglePassword);
+      if (input) input.type = 'password';
+      button.setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-label', tr('acct.showPassword'));
+    });
   }
 
   /* ---------- Username and avatar ---------- */
@@ -628,6 +646,7 @@
       openAuth(state.loaded ? 'signup' : 'login');
       return;
     }
+    if (passwordForm) passwordForm.hidden = true;
     renderProfile();
     openDialog(profileDialog);
     try {
@@ -657,7 +676,80 @@
     $('#profile-xp').textContent = p.xp.toLocaleString(window.AceI18n.lang);
     $('#profile-streak').textContent = String(p.streak);
     $('#profile-tests').textContent = String(p.tests);
+    renderMethods();
   }
+
+  function renderMethods() {
+    const user = state.user;
+    if (!user) return;
+    document.querySelectorAll('#profile-methods [data-method]').forEach(row => {
+      const method = row.dataset.method;
+      const on = Boolean(user.providers[method]);
+      const stateNode = row.querySelector('[data-method-state]');
+      const action = row.querySelector('.method-action');
+      stateNode.classList.toggle('is-on', on);
+      if (method === 'password') {
+        stateNode.textContent = on ? '••••••••' : tr('acct.notSet');
+        action.textContent = on ? tr('acct.passwordChange') : tr('acct.passwordSet');
+        action.hidden = !user.email;
+        return;
+      }
+      const available = Boolean(state.config[method]);
+      stateNode.textContent = on ? tr('acct.linked') : (available ? '' : tr('acct.unavailable'));
+      action.hidden = on || !available;
+      action.disabled = false;
+      action.classList.remove('is-loading');
+    });
+  }
+
+  document.querySelectorAll('[data-link-provider]').forEach(button => {
+    button.addEventListener('click', () => goToProvider(button.dataset.linkProvider, true));
+  });
+
+  const passwordForm = $('#password-form');
+  const passwordMessage = $('#password-message');
+
+  function openPasswordForm() {
+    if (!state.user) return;
+    passwordForm.reset();
+    hidePasswords(passwordForm);
+    showMessage(passwordMessage, '');
+    $('#password-current-field').hidden = !state.user.providers.password;
+    passwordForm.hidden = false;
+    window.setTimeout(() => {
+      (state.user.providers.password ? $('#password-current') : $('#password-new')).focus({ preventScroll: true });
+    }, 40);
+  }
+
+  $('#password-open')?.addEventListener('click', () => {
+    if (passwordForm.hidden) openPasswordForm();
+    else passwordForm.hidden = true;
+  });
+  $('#password-cancel')?.addEventListener('click', () => {
+    passwordForm.hidden = true;
+  });
+  passwordForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const save = $('#password-save');
+    const password = $('#password-new').value;
+    if (password.length < 8) {
+      showMessage(passwordMessage, tr('err.auth.password'), 'error');
+      $('#password-new').focus();
+      return;
+    }
+    save.disabled = true;
+    try {
+      const data = await api('/api/account/password', { current: $('#password-current').value, password });
+      setUser(data.user, { quiet: true });
+      passwordForm.hidden = true;
+      renderMethods();
+      toast(tr('acct.passwordSaved'), '🔐');
+    } catch (error) {
+      showMessage(passwordMessage, error.message, 'error');
+    } finally {
+      save.disabled = false;
+    }
+  });
 
   function renderHistory(items) {
     const list = $('#profile-history');
@@ -888,8 +980,20 @@
   window.addEventListener('aceminder:language', () => {
     renderHeader();
     renderBoard();
-    if (authDialog?.open) setMode(state.mode);
+    if (authDialog?.open) {
+      setMode(state.mode);
+      renderSocial();
+    }
     if (profileDialog?.open) renderProfile();
+  });
+
+  window.addEventListener('hashchange', () => showAuthReturn(readAuthReturn()));
+
+  /* Pressing Back on the Google or Apple page restores this page from cache with busy buttons. */
+  window.addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    renderSocial();
+    renderMethods();
   });
 
   document.addEventListener('visibilitychange', () => {
@@ -899,9 +1003,12 @@
   document.addEventListener('DOMContentLoaded', async () => {
     renderHeader();
     renderBoard();
+    const authReturn = readAuthReturn();
     await loadConfig();
+    renderSocial();
     await loadMe();
     loadBoard();
+    showAuthReturn(authReturn);
     const match = /^#reset=([A-Za-z0-9_-]{20,100})$/.exec(window.location.hash);
     if (match) {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);

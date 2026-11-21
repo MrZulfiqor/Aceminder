@@ -25,13 +25,15 @@ from email.message import EmailMessage
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
 SESSION_COOKIE = "aceminder_session"
 SESSION_SECONDS = 30 * 86400
 RESET_SECONDS = 3600
+OAUTH_COOKIE = "aceminder_oauth"
+OAUTH_SECONDS = 600
 TEST_KEEP_SECONDS = 30 * 86400
 USERNAME_PATTERN = re.compile(r"[^\W_][\w.]{2,19}", re.UNICODE)
 EMAIL_PATTERN = re.compile(r"[^@\s]{1,64}@[^@\s.]+(\.[^@\s.]+)+")
@@ -82,8 +84,10 @@ MULTIPLIERS = {
     "Too easy": 0.5, "Easy": 0.75, "Easy-Medium": 0.9, "Medium": 1.0,
     "Medium-Hard": 1.25, "Hard": 1.5, "Too Hard": 2.0,
 }
+GOOGLE_AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_JWKS = "https://www.googleapis.com/oauth2/v3/certs"
 GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
+APPLE_AUTHORIZE = "https://appleid.apple.com/auth/authorize"
 APPLE_JWKS = "https://appleid.apple.com/auth/keys"
 APPLE_ISSUERS = {"https://appleid.apple.com"}
 SHA256_DIGEST_INFO = bytes.fromhex("3031300d060960864801650304020105000420")
@@ -166,6 +170,15 @@ CREATE TABLE IF NOT EXISTS resets (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     expires_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS oauth_states (
+    state_hash TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    nonce TEXT NOT NULL,
+    link_user_id INTEGER,
+    user_id INTEGER,
+    outcome TEXT,
+    expires_at INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS results_week ON results(week, user_id);
 CREATE INDEX IF NOT EXISTS results_user ON results(user_id, created_at);
 CREATE INDEX IF NOT EXISTS users_xp ON users(xp DESC);
@@ -200,6 +213,7 @@ def init(db_path=None):
         now = int(time.time())
         conn.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
         conn.execute("DELETE FROM resets WHERE expires_at < ?", (now,))
+        conn.execute("DELETE FROM oauth_states WHERE expires_at < ?", (now,))
         conn.execute("DELETE FROM tests WHERE created_at < ?", (now - TEST_KEEP_SECONDS,))
 
 
@@ -362,7 +376,7 @@ def fetch_jwks(url, force=False):
     return keys
 
 
-def verify_id_token(token, jwks_url, issuers, audience):
+def verify_id_token(token, jwks_url, issuers, audience, nonce=None):
     """Check an RS256 JWT signature, issuer, audience and expiry; return its claims."""
     bad = AccountError(401, "provider", "That sign-in did not work. Try again.")
     if not isinstance(token, str) or token.count(".") != 2 or len(token) > 8000:
@@ -403,6 +417,8 @@ def verify_id_token(token, jwks_url, issuers, audience):
         raise bad
     if not isinstance(claims.get("exp"), (int, float)) or claims["exp"] < now - 60:
         raise bad
+    if nonce is not None and not hmac.compare_digest(str(claims.get("nonce") or ""), nonce):
+        raise bad
     return claims
 
 
@@ -411,7 +427,7 @@ def provider_config():
     apple = env("APPLE_CLIENT_ID")
     return {
         "google": {"clientId": google} if google else None,
-        "apple": {"clientId": apple, "redirectUri": env("APPLE_REDIRECT_URI")} if apple else None,
+        "apple": {"clientId": apple} if apple else None,
         "email": True,
         "passwordReset": mail_configured(),
         "avatars": AVATARS,
@@ -456,22 +472,192 @@ def social_user(conn, provider, subject, email, email_verified):
     row = conn.execute(f"SELECT * FROM users WHERE {column} = ?", (subject,)).fetchone()
     if row:
         return row, False
-    if email and email_verified:
-        row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-        if row:
-            # The provider proved this person owns the email. Email sign-ups are not verified,
-            # so drop any password and old sessions in case someone pre-registered this email.
-            conn.execute(
-                f"UPDATE users SET {column} = ?, password_hash = NULL WHERE id = ?",
-                (subject, row["id"]),
-            )
-            conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
-            return conn.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone(), False
+    email_owner = None
+    if email:
+        email_owner = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    if email_owner and email_verified and not email_owner[column]:
+        # The provider proved this person owns the email, so join the existing account.
+        # Email sign-ups are not verified, so if it has a password, drop it and its sessions in
+        # case someone else pre-registered this email. The owner can set a new one in the profile.
+        if email_owner["password_hash"]:
+            conn.execute("UPDATE users SET password_hash = NULL WHERE id = ?", (email_owner["id"],))
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (email_owner["id"],))
+        conn.execute(f"UPDATE users SET {column} = ? WHERE id = ?", (subject, email_owner["id"]))
+        return conn.execute("SELECT * FROM users WHERE id = ?", (email_owner["id"],)).fetchone(), False
+    # A new account. It only keeps the email when it is verified and not already in use.
+    keep_email = email if email and email_verified and email_owner is None else None
     cursor = conn.execute(
         f"INSERT INTO users ({column}, email, avatar, created_at) VALUES (?, ?, ?, ?)",
-        (subject, email if email_verified else None, clean_avatar(None), int(time.time())),
+        (subject, keep_email, clean_avatar(None), int(time.time())),
     )
     return conn.execute("SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)).fetchone(), True
+
+
+# ---------------------------------------------------------------- Google and Apple redirect sign-in
+#
+# Both providers use the same OpenID Connect redirect flow, so no third-party script runs on the
+# page and it works in installed (home-screen) apps, in-app browsers and with blockers:
+#   1. GET  /api/auth/<provider>/start     -> store state + nonce, set a state cookie, redirect out
+#   2. POST /api/auth/<provider>/callback  <- the provider posts the signed ID token (form_post)
+#   3. GET  /api/auth/finish?state=...     -> the state cookie must match; the session starts
+# Step 3 exists because cookies are not sent on the provider's cross-site POST in step 2.
+
+PROVIDERS = {
+    "google": {
+        "authorize": GOOGLE_AUTHORIZE, "jwks": GOOGLE_JWKS, "issuers": GOOGLE_ISSUERS,
+        "client_env": "GOOGLE_CLIENT_ID", "redirect_env": "GOOGLE_REDIRECT_URI",
+        "response_type": "id_token", "scope": "openid email profile",
+    },
+    "apple": {
+        "authorize": APPLE_AUTHORIZE, "jwks": APPLE_JWKS, "issuers": APPLE_ISSUERS,
+        "client_env": "APPLE_CLIENT_ID", "redirect_env": "APPLE_REDIRECT_URI",
+        "response_type": "code id_token", "scope": "name email",
+    },
+}
+
+
+def redirect_uri(provider, base_url):
+    return env(PROVIDERS[provider]["redirect_env"]) or f"{base_url.rstrip('/')}/api/auth/{provider}/callback"
+
+
+def oauth_cookie(value, secure, max_age=OAUTH_SECONDS):
+    parts = [f"{OAUTH_COOKIE}={value}", "Path=/api/auth/", "HttpOnly", "SameSite=Lax", f"Max-Age={max_age}"]
+    if secure:
+        parts.append("Secure")
+    return "; ".join(parts)
+
+
+def oauth_cookie_value(cookie_header_value):
+    if not cookie_header_value:
+        return ""
+    try:
+        cookie = SimpleCookie()
+        cookie.load(cookie_header_value)
+    except CookieError:
+        return ""
+    morsel = cookie.get(OAUTH_COOKIE)
+    return morsel.value if morsel else ""
+
+
+def oauth_start(provider, cookie, client_ip, secure, base_url, link=False):
+    """Return (status, location, set_cookies) that sends the browser to Google or Apple."""
+    spec = PROVIDERS.get(provider)
+    client_id = env(spec["client_env"]) if spec else ""
+    if not client_id:
+        return 303, "/#auth-error=notConfigured", []
+    try:
+        rate_limit(f"oauth:{client_ip}", limit=60)
+    except AccountError:
+        return 303, "/#auth-error=rate", []
+    user = current_user(cookie) if link else None
+    if link and user is None:
+        return 303, "/#auth-error=required", []
+    state = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(24)
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO oauth_states (state_hash, provider, nonce, link_user_id, expires_at) VALUES (?, ?, ?, ?, ?)",
+            (token_hash(state), provider, nonce, user["id"] if user else None, int(time.time()) + OAUTH_SECONDS),
+        )
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri(provider, base_url),
+        "response_type": spec["response_type"],
+        "response_mode": "form_post",
+        "scope": spec["scope"],
+        "state": state,
+        "nonce": nonce,
+    }
+    if provider == "google":
+        params["prompt"] = "select_account"
+    return 302, f"{spec['authorize']}?{urlencode(params)}", [oauth_cookie(state, secure)]
+
+
+def oauth_callback(provider, form):
+    """Handle the provider's form POST. Returns the address to send the browser to next."""
+    def first(name):
+        values = form.get(name) or [""]
+        return values[0] if isinstance(values[0], str) else ""
+
+    state = first("state")
+    if not state or len(state) > 100 or provider not in PROVIDERS:
+        return "/#auth-error=expired"
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM oauth_states WHERE state_hash = ? AND provider = ? AND expires_at > ? AND outcome IS NULL",
+            (token_hash(state), provider, int(time.time())),
+        ).fetchone()
+    if row is None:
+        return "/#auth-error=expired"
+
+    def fail(code):
+        with connect() as conn:
+            conn.execute("DELETE FROM oauth_states WHERE state_hash = ?", (row["state_hash"],))
+        return f"/#auth-error={code}"
+
+    error = first("error")
+    if error:
+        cancelled = error in ("access_denied", "user_cancelled_authorize", "user_cancelled")
+        return fail("cancelled" if cancelled else "provider")
+    spec = PROVIDERS[provider]
+    try:
+        claims = verify_id_token(
+            first("id_token"), spec["jwks"], spec["issuers"], env(spec["client_env"]), nonce=row["nonce"]
+        )
+    except AccountError as problem:
+        return fail(problem.code)
+    subject = str(claims.get("sub") or "")
+    if not subject:
+        return fail("provider")
+    email = claims.get("email") if isinstance(claims.get("email"), str) else None
+    verified = claims.get("email_verified") in (True, "true")
+    column = "google_sub" if provider == "google" else "apple_sub"
+
+    with connect() as conn:
+        if row["link_user_id"]:
+            owner = conn.execute(f"SELECT id FROM users WHERE {column} = ?", (subject,)).fetchone()
+            if owner and owner["id"] != row["link_user_id"]:
+                conn.execute("DELETE FROM oauth_states WHERE state_hash = ?", (row["state_hash"],))
+                return "/#auth-error=linkedElsewhere"
+            target = conn.execute("SELECT id, email FROM users WHERE id = ?", (row["link_user_id"],)).fetchone()
+            if target is None:
+                conn.execute("DELETE FROM oauth_states WHERE state_hash = ?", (row["state_hash"],))
+                return "/#auth-error=required"
+            conn.execute(f"UPDATE users SET {column} = ? WHERE id = ?", (subject, target["id"]))
+            if not target["email"] and email and verified:
+                taken = conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone()
+                if not taken:
+                    conn.execute("UPDATE users SET email = ? WHERE id = ?", (email, target["id"]))
+            user_id, outcome = target["id"], "linked"
+        else:
+            user, created = social_user(conn, provider, subject, email, verified)
+            user_id, outcome = user["id"], "new" if created else "ok"
+        conn.execute(
+            "UPDATE oauth_states SET user_id = ?, outcome = ? WHERE state_hash = ?",
+            (user_id, outcome, row["state_hash"]),
+        )
+    return f"/api/auth/finish?state={state}"
+
+
+def oauth_finish(query, cookie, secure):
+    """Start the session once the state cookie proves this browser began the sign-in."""
+    state = (parse_qs(query).get("state") or [""])[0]
+    clear = oauth_cookie("", secure, max_age=0)
+    expected = oauth_cookie_value(cookie)
+    if not state or not expected or len(state) > 100 or not hmac.compare_digest(state, expected):
+        return "/#auth-error=expired", [clear]
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM oauth_states WHERE state_hash = ? AND expires_at > ? AND outcome IS NOT NULL",
+            (token_hash(state), int(time.time())),
+        ).fetchone()
+        if row is None:
+            return "/#auth-error=expired", [clear]
+        conn.execute("DELETE FROM oauth_states WHERE state_hash = ?", (row["state_hash"],))
+        if row["outcome"] == "linked":
+            return f"/#auth=linked-{row['provider']}", [clear]
+        token = create_session(conn, row["user_id"])
+    return f"/#auth={row['outcome']}", [clear, cookie_header(token, secure)]
 
 
 # ---------------------------------------------------------------- XP, levels and badges
@@ -856,7 +1042,7 @@ def _route(method, path, query, body, cookie, client_ip, secure, base_url):
         raise AccountError(404, "generic", "Endpoint not found.")
 
     if path == "/api/auth/signup":
-        rate_limit(f"auth:{client_ip}")
+        rate_limit(f"signup:{client_ip}", limit=40, window=600)
         email = clean_email(body.get("email"))
         password = clean_password(body.get("password"))
         username = clean_username(body.get("username"))
@@ -876,7 +1062,7 @@ def _route(method, path, query, body, cookie, client_ip, secure, base_url):
             return signed_in(conn, cursor.lastrowid, secure, 201, created=True)
 
     if path == "/api/auth/login":
-        rate_limit(f"auth:{client_ip}")
+        rate_limit(f"login-ip:{client_ip}", limit=60, window=600)
         identifier = body.get("identifier") if isinstance(body.get("identifier"), str) else ""
         password = body.get("password") if isinstance(body.get("password"), str) else ""
         identifier = identifier.strip()
@@ -896,25 +1082,6 @@ def _route(method, path, query, body, cookie, client_ip, secure, base_url):
             if not verify_password(password, row["password_hash"]):
                 raise AccountError(401, "wrong", "Wrong email or password.")
             return signed_in(conn, row["id"], secure)
-
-    if path in ("/api/auth/google", "/api/auth/apple"):
-        rate_limit(f"auth:{client_ip}", limit=30)
-        provider = "google" if path.endswith("google") else "apple"
-        config = provider_config()[provider]
-        if not config:
-            raise AccountError(503, "notConfigured", "This sign-in method is not set up on this server yet.")
-        if provider == "google":
-            claims = verify_id_token(body.get("credential"), GOOGLE_JWKS, GOOGLE_ISSUERS, config["clientId"])
-        else:
-            claims = verify_id_token(body.get("idToken"), APPLE_JWKS, APPLE_ISSUERS, config["clientId"])
-        subject = str(claims.get("sub") or "")
-        if not subject:
-            raise AccountError(401, "provider", "That sign-in did not work. Try again.")
-        email = claims.get("email") if isinstance(claims.get("email"), str) else None
-        verified = claims.get("email_verified") in (True, "true")
-        with connect() as conn:
-            row, created = social_user(conn, provider, subject, email, verified)
-            return signed_in(conn, row["id"], secure, 200, created=created)
 
     if path == "/api/auth/logout":
         token = session_token(cookie)
@@ -986,6 +1153,26 @@ def _route(method, path, query, body, cookie, client_ip, secure, base_url):
                 conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", (*values, user["id"]))
             except sqlite3.IntegrityError:
                 raise AccountError(409, "taken", "That username is already taken.")
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+            return respond(200, {"user": user_payload(conn, row)})
+
+    if path == "/api/account/password":
+        rate_limit(f"password:{user['id']}", limit=8, window=900)
+        new_password = clean_password(body.get("password"))
+        if user["password_hash"]:
+            current = body.get("current") if isinstance(body.get("current"), str) else ""
+            if not verify_password(current, user["password_hash"]):
+                raise AccountError(401, "currentWrong", "Your current password is not right.")
+        email = user["email"]
+        if not email:
+            raise AccountError(400, "needEmail", "Add an email to your account before setting a password.")
+        token = session_token(cookie)
+        with connect() as conn:
+            conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_password), user["id"]))
+            # Sign out every other device; this one stays signed in.
+            conn.execute(
+                "DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", (user["id"], token_hash(token))
+            )
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
             return respond(200, {"user": user_payload(conn, row)})
 
