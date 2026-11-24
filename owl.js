@@ -47,7 +47,7 @@
     happy: `<path d="M34 53 Q44 40 54 53 M66 53 Q76 40 86 53" fill="none" stroke="${INK}" stroke-width="5" stroke-linecap="round"/>`,
     sleep: `<path d="M34 49 Q44 57 54 49 M66 49 Q76 57 86 49" fill="none" stroke="${INK}" stroke-width="4.5" stroke-linecap="round"/>`,
     wink: `<path d="M34 53 Q44 40 54 53" fill="none" stroke="${INK}" stroke-width="5" stroke-linecap="round"/><g class="owl-pupils"><circle cx="76" cy="49" r="9" fill="${INK}"/><circle cx="79.5" cy="45.5" r="3.2" fill="#fff"/></g>`,
-    sad: `<g class="owl-pupils"><circle cx="44" cy="52" r="8" fill="${INK}"/><circle cx="76" cy="52" r="8" fill="${INK}"/><circle cx="47" cy="49" r="2.6" fill="#fff"/><circle cx="79" cy="49" r="2.6" fill="#fff"/></g><path d="M30 36 L52 42 M90 36 L68 42" stroke="${GOLD_DEEP}" stroke-width="3" stroke-linecap="round"/>`
+    sad: `<g class="owl-pupils"><circle cx="44" cy="52" r="8" fill="${INK}"/><circle cx="76" cy="52" r="8" fill="${INK}"/><circle cx="47" cy="49" r="2.6" fill="#fff"/><circle cx="79" cy="49" r="2.6" fill="#fff"/></g><path d="M29 41 L50 33 M91 41 L70 33" stroke="${GOLD_DEEP}" stroke-width="3" stroke-linecap="round"/>`
   };
 
   const ACCESSORIES = {
@@ -72,6 +72,8 @@
     rise: { back: `<path d="M100 66 L100 30 L90 30 L106 6 L122 30 L112 30 L112 66 Z" fill="#34d399" stroke="#047857" stroke-width="2" stroke-linejoin="round"/>` },
     hatch: { front: `<path d="M16 76 L27 66 L36 77 L46 64 L56 77 L66 64 L76 77 L86 64 L95 76 L104 70 C106 102 88 122 60 122 C32 122 14 102 16 76 Z" fill="#fff7e6" stroke="#e7cf9f" stroke-width="2.5" stroke-linejoin="round"/><circle cx="38" cy="98" r="4" fill="#fde68a"/><circle cx="78" cy="104" r="5" fill="#fde68a"/><circle cx="62" cy="112" r="3" fill="#fde68a"/><path d="M38 18 C42 2 78 2 82 18 L74 12 L67 19 L60 11 L53 19 L46 12 Z" fill="#fff7e6" stroke="#e7cf9f" stroke-width="2.5" stroke-linejoin="round" transform="rotate(-14 60 12)"/>` },
     trophy: { front: `<path d="M44 84 h32 v6 c0 12 -7 18 -16 18 c-9 0 -16 -6 -16 -18z" fill="url(#ace-gold)" stroke="${GOLD_DEEP}" stroke-width="2"/><path d="M56 108 h8 v6 h6 v5 h-20 v-5 h6z" fill="${GOLD_DEEP}"/>` },
+    /* Wings Ace raises over the eyes while a password is being typed (moved by CSS). */
+    shy: { front: `<g class="owl-shy"><path class="owl-shy-l" d="M20 108 C8 84 14 46 34 34 C52 28 62 40 60 56 C58 78 40 100 20 108 Z" fill="${WING}" stroke="#2b4a86" stroke-width="2"/><path class="owl-shy-r" d="M100 108 C112 84 106 46 86 34 C68 28 58 40 60 56 C62 78 80 100 100 108 Z" fill="${WING}" stroke="#2b4a86" stroke-width="2"/></g>` },
     wave: { wave: true }
   };
 

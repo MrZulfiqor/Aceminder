@@ -3,10 +3,13 @@ import binascii
 import json
 import os
 import re
+import socket
 import sys
 import tempfile
+import threading
 import time
 import traceback
+import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -14,9 +17,9 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
 import accounts
+import mailer
 
 ROOT = Path(__file__).resolve().parent
-API_KEY_ENV = "GEMINI_API_KEY"
 API_KEY_HEADER = "X-Gemini-Key"
 API_KEY_PATTERN = re.compile(r"^[A-Za-z0-9._-]{20,200}$")
 DEFAULT_MODEL = "gemini-3.5-flash"
@@ -88,15 +91,8 @@ def load_env_file(path):
             os.environ[name] = value
 
 
-def get_api_key():
-    return (
-        os.environ.get(API_KEY_ENV, "").strip()
-        or os.environ.get("GOOGLE_API_KEY", "").strip()
-    )
-
-
 def request_api_key(handler):
-    """Use the visitor's own key when the browser sends one, else the local .env key."""
+    """Only the visitor's own key is ever used. The server has no key of its own."""
     header_key = (handler.headers.get(API_KEY_HEADER) or "").strip()
     if header_key:
         if not API_KEY_PATTERN.fullmatch(header_key):
@@ -105,7 +101,7 @@ def request_api_key(handler):
                 "and paste it again."
             ), True
         return header_key, None, True
-    return get_api_key(), None, False
+    return "", None, False
 
 
 def verify_api_key(api_key):
@@ -1225,9 +1221,18 @@ class AceminderHandler(SimpleHTTPRequestHandler):
             return public
         return f"http://{self.headers.get('Host') or '127.0.0.1:8000'}"
 
+    @staticmethod
+    def behind_proxy():
+        """Forwarding headers are only believed when the owner says the site is behind a proxy."""
+        return bool(os.environ.get("PUBLIC_URL", "").strip() or os.environ.get("TRUST_PROXY", "").strip())
+
     def client_ip(self):
-        forwarded = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
-        return forwarded or self.client_address[0]
+        if self.behind_proxy():
+            # The nearest proxy adds the last entry; earlier ones can be made up by the visitor.
+            forwarded = (self.headers.get("X-Forwarded-For") or "").split(",")[-1].strip()
+            if forwarded:
+                return forwarded[:64]
+        return self.client_address[0]
 
     def account_route(self, method, path, query, body):
         status, payload, cookie = accounts.route(
@@ -1245,7 +1250,13 @@ class AceminderHandler(SimpleHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if not origin or origin == "null":
             return False
-        return urlsplit(origin).netloc.lower() != (self.headers.get("Host") or "").lower()
+        allowed = {(self.headers.get("Host") or "").lower()}
+        public = os.environ.get("PUBLIC_URL", "").strip()
+        if public:
+            allowed.add(urlsplit(public).netloc.lower())
+        if self.behind_proxy():
+            allowed.add((self.headers.get("X-Forwarded-Host") or "").split(",")[0].strip().lower())
+        return urlsplit(origin).netloc.lower() not in allowed
 
     def do_GET(self):
         split = urlsplit(self.path)
@@ -1271,7 +1282,7 @@ class AceminderHandler(SimpleHTTPRequestHandler):
             model = os.environ.get("GEMINI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
             send_json(self, 200, {
                 "ok": True,
-                "aiConfigured": bool(get_api_key()),
+                "aiConfigured": False,
                 "byokSupported": True,
                 "model": model,
                 "filesSupported": True,
@@ -1307,7 +1318,11 @@ class AceminderHandler(SimpleHTTPRequestHandler):
             send_json(self, 404, {"error": "Endpoint not found."})
             return
         if self.cross_site():
-            send_json(self, 403, {"error": "Requests from other websites are not allowed."})
+            send_json(self, 403, {
+                "error": "Requests from other websites are not allowed. If this is your own domain, "
+                         "set PUBLIC_URL in .env to its address and restart the server.",
+                "code": "origin",
+            })
             return
 
         if path == "/api/upload":
@@ -1462,8 +1477,46 @@ class AceminderHandler(SimpleHTTPRequestHandler):
         send_json(self, 200, response)
 
 
+class AceminderServer(ThreadingHTTPServer):
+    """On Windows the default lets two servers share a port, and an old one keeps answering."""
+    allow_reuse_address = os.name != "nt"
+    daemon_threads = True
+
+    def server_bind(self):
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def check_mail():
+    ok, detail = mailer.check()
+    print(f"Email: ready. {detail}" if ok else f"EMAIL PROBLEM: {detail}", flush=True)
+
+
+def test_email(address):
+    """python server.py --test-email you@gmail.com"""
+    ok, detail = mailer.check()
+    if ok:
+        try:
+            mailer.send(address, *mailer.code_email("verify", "123456"))
+            print(f"Sent a test code (123456) to {address}. Check the inbox and the Spam folder.")
+            return 0
+        except mailer.MailError as error:
+            detail = str(error)
+    print(f"EMAIL PROBLEM: {detail}")
+    if not mailer.configured():
+        print("Add GMAIL_ADDRESS and GMAIL_APP_PASSWORD to .env, then run this again.")
+    return 1
+
+
 def main():
     load_env_file(ROOT / ".env")
+    if "--test-email" in sys.argv:
+        position = sys.argv.index("--test-email") + 1
+        if position >= len(sys.argv):
+            print("Say where to send it: python server.py --test-email you@gmail.com")
+            return 1
+        return test_email(sys.argv[position])
     accounts.init()
     host = "127.0.0.1"
     try:
@@ -1475,28 +1528,32 @@ def main():
         port = 8000
 
     try:
-        server = ThreadingHTTPServer((host, port), AceminderHandler)
+        server = AceminderServer((host, port), AceminderHandler)
     except OSError as error:
-        print(f"Could not start Aceminder on http://{host}:{port}: {error}")
-        print("Stop the other process or run with a different port, for example: PORT=8001 python server.py")
+        print(f"Could not start Aceminder: port {port} is already in use ({error}).")
+        print("Another copy of the server is probably still running. Close its window (or press Ctrl+C in it),")
+        print("then start this one again.")
         return 1
 
-    server.daemon_threads = True
     print(f"Aceminder is running at http://{host}:{port}")
-    if get_api_key():
-        print("Gemini question generation is ready (visitors can also bring their own key).")
-    else:
-        print(
-            "No shared key is set, so each visitor must add their own Gemini API key in the browser. "
-            f"To let everyone run on this computer's key, add {API_KEY_ENV}=... to .env and restart."
-        )
+    if "--open" in sys.argv:
+        threading.Timer(0.6, webbrowser.open, (f"http://{host}:{port}/",)).start()
+    print("Gemini: every visitor uses their own key, added in the browser.")
     providers = accounts.provider_config()
     print(
         "Accounts: email sign-up is on"
         + (", Google sign-in is on" if providers["google"] else ", Google sign-in is off (set GOOGLE_CLIENT_ID)")
         + (", Apple sign-in is on" if providers["apple"] else ", Apple sign-in is off (set APPLE_CLIENT_ID)")
-        + (", password reset email is on." if providers["passwordReset"] else ", password reset email is off (set SMTP_HOST and SMTP_FROM).")
+        + "."
     )
+
+    if mailer.configured():
+        threading.Thread(target=check_mail, daemon=True).start()
+    else:
+        print(
+            "Email: not set up, so verification and password-reset codes are shown in this window. "
+            "To email them, add GMAIL_ADDRESS and GMAIL_APP_PASSWORD to .env and restart."
+        )
 
     try:
         server.serve_forever()

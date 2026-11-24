@@ -1,5 +1,8 @@
 """Aceminder accounts: users, sessions, Google / Apple / email sign-in, XP and leaderboards.
 
+Email sign-ups are confirmed with a six-digit code before the account is created, and forgotten
+passwords are reset with a code too (see mailer.py).
+
 Only the Python standard library is used: SQLite for storage, scrypt for passwords and a
 small RS256 verifier for Google and Apple ID tokens. XP is calculated here on the server
 from tests the server itself generated, so the leaderboard cannot be faked from the browser.
@@ -13,28 +16,39 @@ import os
 import random
 import re
 import secrets
-import smtplib
 import sqlite3
-import ssl
 import threading
 import time
+import traceback
 from collections import defaultdict, deque
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
-from email.message import EmailMessage
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs
 from urllib.request import Request, urlopen
 
+import mailer
+
 ROOT = Path(__file__).resolve().parent
 SESSION_COOKIE = "aceminder_session"
 SESSION_SECONDS = 30 * 86400
-RESET_SECONDS = 3600
+CODE_SECONDS = 600
+CODE_RESEND_SECONDS = 45
+CODE_MAX_ATTEMPTS = 5
+CODE_MAX_SENDS = 4
 TEST_KEEP_SECONDS = 30 * 86400
 USERNAME_PATTERN = re.compile(r"[^\W_][\w.]{2,19}", re.UNICODE)
-EMAIL_PATTERN = re.compile(r"[^@\s]{1,64}@[^@\s.]+(\.[^@\s.]+)+")
+EMAIL_PATTERN = re.compile(
+    r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z][A-Za-z0-9-]*[A-Za-z0-9]"
+)
+COMMON_PASSWORDS = {
+    "password", "password1", "password123", "passw0rd", "12345678", "123456789", "1234567890",
+    "qwertyuiop", "qwerty123", "qwertyui", "11111111", "00000000", "87654321", "abcd1234", "abc12345",
+    "iloveyou", "letmein1", "welcome1", "football", "baseball", "sunshine", "princess", "superman",
+    "aceminder", "aceminder1", "1q2w3e4r", "asdfghjk", "asdfghjkl", "computer", "internet",
+}
 RESERVED_NAMES = {
     "admin", "administrator", "aceminder", "support", "moderator", "mod", "root", "system",
     "staff", "official", "help", "null", "undefined", "anonymous", "guest", "you", "me",
@@ -98,11 +112,12 @@ _jwks_lock = threading.Lock()
 class AccountError(Exception):
     """A user-facing problem. `code` lets the browser show a translated message."""
 
-    def __init__(self, status, code, message):
+    def __init__(self, status, code, message, **extra):
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
+        self.extra = extra
 
 
 def env(name):
@@ -161,9 +176,18 @@ CREATE TABLE IF NOT EXISTS results (
     week TEXT NOT NULL,
     created_at INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS resets (
-    token_hash TEXT PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS codes (
+    ticket_hash TEXT PRIMARY KEY,
+    purpose TEXT NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    email TEXT NOT NULL COLLATE NOCASE,
+    username TEXT COLLATE NOCASE,
+    data TEXT,
+    language TEXT NOT NULL DEFAULT 'English',
+    code_hash TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    sends INTEGER NOT NULL DEFAULT 1,
+    sent_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS results_week ON results(week, user_id);
@@ -186,6 +210,7 @@ def init(db_path=None):
             ("users", "avatar_image", "BLOB"),
             ("users", "avatar_mime", "TEXT"),
             ("users", "avatar_version", "INTEGER NOT NULL DEFAULT 0"),
+            ("users", "email_verified", "INTEGER NOT NULL DEFAULT 0"),
             ("tests", "language", "TEXT"),
             ("tests", "files", "INTEGER NOT NULL DEFAULT 0"),
             ("tests", "formats", "INTEGER NOT NULL DEFAULT 1"),
@@ -199,7 +224,14 @@ def init(db_path=None):
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
         now = int(time.time())
         conn.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
-        conn.execute("DELETE FROM resets WHERE expires_at < ?", (now,))
+        # Reset links were replaced by emailed codes.
+        conn.execute("DROP TABLE IF EXISTS resets")
+        conn.execute("DELETE FROM codes WHERE expires_at < ?", (now,))
+        # Google and Apple already proved these addresses.
+        conn.execute(
+            "UPDATE users SET email_verified = 1 WHERE email IS NOT NULL AND password_hash IS NULL "
+            "AND (google_sub IS NOT NULL OR apple_sub IS NOT NULL)"
+        )
         conn.execute("DELETE FROM tests WHERE created_at < ?", (now - TEST_KEEP_SECONDS,))
 
 
@@ -227,9 +259,17 @@ def clean_email(value):
     return email
 
 
-def clean_password(value):
+def clean_password(value, *personal):
     if not isinstance(value, str) or not 8 <= len(value) <= 200:
         raise AccountError(400, "password", "Password must be at least 8 characters.")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise AccountError(400, "passwordChars", "That password contains a character that cannot be used.")
+    plain = value.casefold()
+    obvious = plain in COMMON_PASSWORDS or len(set(plain)) == 1
+    if obvious or any(item and plain == item.casefold() for item in personal):
+        raise AccountError(400, "passwordWeak", "That password is too easy to guess. Choose another one.")
     return value
 
 
@@ -285,12 +325,26 @@ def burn_password_check(password):
 def rate_limit(key, limit=12, window=600):
     now = time.monotonic()
     with _attempts_lock:
+        if len(_attempts) > 5000:
+            for stale in [k for k, times in _attempts.items() if not times or now - times[-1] > 3600]:
+                del _attempts[stale]
         bucket = _attempts[key]
         while bucket and now - bucket[0] > window:
             bucket.popleft()
         if len(bucket) >= limit:
-            raise AccountError(429, "rate", "Too many attempts. Wait a few minutes and try again.")
+            wait = max(1, int(window - (now - bucket[0])) + 1)
+            raise AccountError(
+                429, "rate", "Too many attempts. Wait a few minutes and try again.", retryIn=wait
+            )
         bucket.append(now)
+
+
+def rate_forgive(key):
+    """Undo the latest hit, so successful attempts never count towards a lockout."""
+    with _attempts_lock:
+        bucket = _attempts.get(key)
+        if bucket:
+            bucket.pop()
 
 
 # ---------------------------------------------------------------- sessions
@@ -413,7 +467,7 @@ def provider_config():
         "google": {"clientId": google} if google else None,
         "apple": {"clientId": apple, "redirectUri": env("APPLE_REDIRECT_URI")} if apple else None,
         "email": True,
-        "passwordReset": mail_configured(),
+        "mail": "email" if mailer.configured() else "console",
         "avatars": AVATARS,
         "achievements": achievement_config(),
         "photoMaxBytes": PHOTO_MAX_BYTES,
@@ -459,17 +513,21 @@ def social_user(conn, provider, subject, email, email_verified):
     if email and email_verified:
         row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         if row:
-            # The provider proved this person owns the email. Email sign-ups are not verified,
-            # so drop any password and old sessions in case someone pre-registered this email.
-            conn.execute(
-                f"UPDATE users SET {column} = ?, password_hash = NULL WHERE id = ?",
-                (subject, row["id"]),
-            )
-            conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
+            # The provider proved this person owns the email. If the account never confirmed it,
+            # drop its password and sessions in case someone else pre-registered the address.
+            if row["email_verified"]:
+                conn.execute(f"UPDATE users SET {column} = ? WHERE id = ?", (subject, row["id"]))
+            else:
+                conn.execute(
+                    f"UPDATE users SET {column} = ?, password_hash = NULL, email_verified = 1 WHERE id = ?",
+                    (subject, row["id"]),
+                )
+                conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
             return conn.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone(), False
     cursor = conn.execute(
-        f"INSERT INTO users ({column}, email, avatar, created_at) VALUES (?, ?, ?, ?)",
-        (subject, email if email_verified else None, clean_avatar(None), int(time.time())),
+        f"INSERT INTO users ({column}, email, email_verified, avatar, created_at) VALUES (?, ?, ?, ?, ?)",
+        (subject, email if email_verified else None, 1 if email and email_verified else 0,
+         clean_avatar(None), int(time.time())),
     )
     return conn.execute("SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)).fetchone(), True
 
@@ -597,6 +655,7 @@ def public_user(row, stats=None):
         "avatar": row["avatar"],
         "avatarUrl": avatar_url(row),
         "email": row["email"],
+        "emailVerified": bool(row["email_verified"]),
         "needsUsername": not row["username"],
         "providers": {
             "password": bool(row["password_hash"]),
@@ -767,29 +826,144 @@ def history(user_id):
     return [dict(row) for row in rows]
 
 
-# ---------------------------------------------------------------- password reset email
+# ---------------------------------------------------------------- emailed six-digit codes
 
-def mail_configured():
-    return bool(env("SMTP_HOST") and env("SMTP_FROM"))
+def clean_language(value):
+    return value if isinstance(value, str) and value in mailer.TEXTS else "English"
 
 
-def send_mail(to, subject, body):
-    message = EmailMessage()
-    message["From"] = env("SMTP_FROM")
-    message["To"] = to
-    message["Subject"] = subject
-    message.set_content(body)
-    port = int(env("SMTP_PORT") or "587")
-    context = ssl.create_default_context()
-    if port == 465:
-        server = smtplib.SMTP_SSL(env("SMTP_HOST"), port, timeout=20, context=context)
-    else:
-        server = smtplib.SMTP(env("SMTP_HOST"), port, timeout=20)
-        server.starttls(context=context)
-    with server:
-        if env("SMTP_USER"):
-            server.login(env("SMTP_USER"), env("SMTP_PASSWORD"))
-        server.send_message(message)
+def code_digest(ticket, code):
+    """Keyed by the ticket (stored only as a hash), so a leaked database cannot reveal codes."""
+    return hmac.new(ticket.encode("utf-8"), code.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def new_code():
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def limit_sends(email, client_ip):
+    rate_limit(f"send-ip:{client_ip}", limit=15, window=3600)
+    rate_limit(f"send-to:{email.casefold()}", limit=6, window=3600)
+
+
+def send_code(purpose, email, code, language):
+    try:
+        mailer.deliver_code(purpose, email, code, language)
+    except mailer.MailError:
+        raise AccountError(
+            502, "mailSend", "The email could not be sent. Check the address or try again in a few minutes."
+        )
+
+
+def send_code_later(purpose, email, code, language):
+    """Send without making the visitor wait, so timing cannot reveal which emails have accounts."""
+    def work():
+        try:
+            mailer.deliver_code(purpose, email, code, language)
+        except mailer.MailError:
+            pass  # mailer already reported the reason in the server window
+        except Exception:
+            traceback.print_exc()
+    threading.Thread(target=work, daemon=True).start()
+
+
+def create_code(purpose, email, language, user_id=None, username=None, data=None):
+    """Store a fresh code and return (ticket, code). The ticket goes to the browser."""
+    ticket, code, now = secrets.token_urlsafe(24), new_code(), int(time.time())
+    with connect() as conn:
+        conn.execute("DELETE FROM codes WHERE expires_at < ?", (now - CODE_SECONDS,))
+        conn.execute(
+            "INSERT INTO codes (ticket_hash, purpose, user_id, email, username, data, language, code_hash, "
+            "sent_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (token_hash(ticket), purpose, user_id, email, username,
+             json.dumps(data) if data is not None else None, language, code_digest(ticket, code),
+             now, now + CODE_SECONDS),
+        )
+    return ticket, code
+
+
+def drop_code(ticket):
+    with connect() as conn:
+        conn.execute("DELETE FROM codes WHERE ticket_hash = ?", (token_hash(ticket),))
+
+
+def code_payload(ticket, purpose, email):
+    return {
+        "ticket": ticket, "purpose": purpose, "email": email,
+        "resendIn": CODE_RESEND_SECONDS, "expiresIn": CODE_SECONDS,
+        "delivery": "email" if mailer.configured() else "console",
+    }
+
+
+def clean_ticket(value):
+    if not isinstance(value, str) or not 20 <= len(value) <= 80 or not value.isascii():
+        raise AccountError(400, "codeExpired", "This code has expired. Ask for a new one.")
+    return value
+
+
+def check_code(ticket, code, purposes, client_ip):
+    """Return the stored row when the code is right. Every guess is counted before it is checked."""
+    rate_limit(f"guess:{client_ip}", limit=40, window=3600)
+    ticket = clean_ticket(ticket)
+    digits = re.sub(r"\s+", "", code) if isinstance(code, str) else ""
+    if not re.fullmatch(r"[0-9]{6}", digits):
+        raise AccountError(400, "code", "Enter the 6-digit code.")
+    key = token_hash(ticket)
+    with connect() as conn:
+        counted = conn.execute(
+            "UPDATE codes SET attempts = attempts + 1 WHERE ticket_hash = ? AND attempts < ? AND expires_at > ?",
+            (key, CODE_MAX_ATTEMPTS, int(time.time())),
+        ).rowcount
+        row = conn.execute("SELECT * FROM codes WHERE ticket_hash = ?", (key,)).fetchone()
+    if not counted or row is None or row["purpose"] not in purposes:
+        raise AccountError(400, "codeExpired", "This code has expired. Ask for a new one.")
+    if not hmac.compare_digest(code_digest(ticket, digits), row["code_hash"]):
+        left = CODE_MAX_ATTEMPTS - row["attempts"]
+        if left <= 0:
+            raise AccountError(400, "codeExpired", "Too many wrong codes. Ask for a new one.")
+        raise AccountError(400, "codeWrong", "That code is not right.", left=left)
+    rate_forgive(f"guess:{client_ip}")
+    return row
+
+
+def use_code(conn, row):
+    """Spend a code exactly once, inside the caller's transaction."""
+    if not conn.execute("DELETE FROM codes WHERE ticket_hash = ?", (row["ticket_hash"],)).rowcount:
+        raise AccountError(400, "codeExpired", "This code has expired. Ask for a new one.")
+
+
+def email_taken(conn, email):
+    existing = conn.execute("SELECT password_hash FROM users WHERE email = ?", (email,)).fetchone()
+    if not existing:
+        return
+    if existing["password_hash"]:
+        raise AccountError(409, "emailUsed", "An account with this email already exists. Log in instead.")
+    raise AccountError(409, "socialOnly", "This email uses Google or Apple sign-in. Use that button instead.")
+
+
+def username_taken(conn, username, email):
+    if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
+        raise AccountError(409, "taken", "That username is already taken.")
+    # Someone is confirming their email right now with this name: hold it for them.
+    if conn.execute(
+        "SELECT 1 FROM codes WHERE purpose = 'signup' AND username = ? AND email <> ? AND expires_at > ?",
+        (username, email, int(time.time())),
+    ).fetchone():
+        raise AccountError(409, "taken", "That username is already taken.")
+
+
+def insert_user(conn, username, email, password_hash, avatar, verified):
+    # If the name was taken in the meantime, create the account and let them pick another.
+    if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
+        username = None
+    try:
+        return conn.execute(
+            "INSERT INTO users (username, email, password_hash, avatar, created_at, email_verified) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (username, email, password_hash, avatar, int(time.time()), 1 if verified else 0),
+        ).lastrowid
+    except sqlite3.IntegrityError:
+        raise AccountError(409, "emailUsed", "An account with this email already exists. Log in instead.")
 
 
 # ---------------------------------------------------------------- HTTP routes
@@ -809,11 +983,11 @@ def route(method, path, query, body, cookie, client_ip, secure, base_url):
     try:
         return _route(method, path, query, body if isinstance(body, dict) else {}, cookie, client_ip, secure, base_url)
     except AccountError as error:
-        return respond(error.status, {"error": error.message, "code": error.code})
-    except sqlite3.Error:
-        import traceback
+        return respond(error.status, {"error": error.message, "code": error.code, **error.extra})
+    except Exception:
+        # Always answer: an unhandled error would drop the connection and look like a dead server.
         traceback.print_exc()
-        return respond(500, {"error": "The account database had a problem. Try again.", "code": "generic"})
+        return respond(500, {"error": "Something went wrong on the server. Try again.", "code": "generic"})
 
 
 def _route(method, path, query, body, cookie, client_ip, secure, base_url):
@@ -856,45 +1030,127 @@ def _route(method, path, query, body, cookie, client_ip, secure, base_url):
         raise AccountError(404, "generic", "Endpoint not found.")
 
     if path == "/api/auth/signup":
-        rate_limit(f"auth:{client_ip}")
-        email = clean_email(body.get("email"))
-        password = clean_password(body.get("password"))
+        # Check everything the person can fix before counting this as an attempt.
         username = clean_username(body.get("username"))
+        email = clean_email(body.get("email"))
+        password = clean_password(body.get("password"), username, email, email.partition("@")[0])
         avatar = clean_avatar(body.get("avatar"))
+        language = clean_language(body.get("language"))
+        rate_limit(f"signup:{client_ip}", limit=30, window=3600)
         with connect() as conn:
-            existing = conn.execute("SELECT password_hash FROM users WHERE email = ?", (email,)).fetchone()
-            if existing:
-                if existing["password_hash"]:
-                    raise AccountError(409, "emailUsed", "An account with this email already exists. Log in instead.")
-                raise AccountError(409, "socialOnly", "This email uses Google or Apple sign-in. Use that button instead.")
-            if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
-                raise AccountError(409, "taken", "That username is already taken.")
-            cursor = conn.execute(
-                "INSERT INTO users (username, email, password_hash, avatar, created_at) VALUES (?, ?, ?, ?, ?)",
-                (username, email, hash_password(password), avatar, int(time.time())),
+            email_taken(conn, email)
+            username_taken(conn, username, email)
+        password_hash = hash_password(password)
+
+        if mailer.configured():
+            # The account is only created once the emailed code comes back.
+            limit_sends(email, client_ip)
+            ticket, code = create_code(
+                "signup", email, language, username=username,
+                data={"username": username, "passwordHash": password_hash, "avatar": avatar},
             )
-            return signed_in(conn, cursor.lastrowid, secure, 201, created=True)
+            try:
+                send_code("signup", email, code, language)
+            except AccountError:
+                drop_code(ticket)
+                raise
+            return respond(202, {"verify": code_payload(ticket, "signup", email)})
+
+        # No email service yet: never block sign-up on a message that cannot be delivered.
+        with connect() as conn:
+            user_id = insert_user(conn, username, email, password_hash, avatar, verified=False)
+            result = signed_in(conn, user_id, secure, 201, created=True)
+        ticket, code = create_code("verify", email, language, user_id=user_id)
+        send_code_later("verify", email, code, language)
+        result[1]["verify"] = code_payload(ticket, "verify", email)
+        return result
+
+    if path == "/api/auth/verify":
+        row = check_code(body.get("ticket"), body.get("code"), ("signup", "verify"), client_ip)
+        with connect() as conn:
+            use_code(conn, row)
+            if row["purpose"] == "signup":
+                data = json.loads(row["data"])
+                email_taken(conn, row["email"])
+                user_id = insert_user(
+                    conn, data["username"], row["email"], data["passwordHash"], data["avatar"], verified=True
+                )
+                return signed_in(conn, user_id, secure, 201, created=True)
+            conn.execute(
+                "UPDATE users SET email_verified = 1 WHERE id = ? AND email = ?", (row["user_id"], row["email"])
+            )
+            fresh = None
+            if user is not None and user["id"] == row["user_id"]:
+                fresh = user_payload(
+                    conn, conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+                )
+            return respond(200, {"verified": True, "user": fresh})
+
+    if path == "/api/auth/resend":
+        ticket = clean_ticket(body.get("ticket"))
+        key, now = token_hash(ticket), int(time.time())
+        rate_limit(f"resend:{client_ip}", limit=30, window=3600)
+        with connect() as conn:
+            row = conn.execute("SELECT * FROM codes WHERE ticket_hash = ?", (key,)).fetchone()
+        # Keep the ticket alive a little past its code so "send again" works right after it expires.
+        if row is None or row["expires_at"] < now - CODE_SECONDS:
+            raise AccountError(400, "codeExpired", "This code has expired. Start again.")
+        if row["sends"] >= CODE_MAX_SENDS:
+            raise AccountError(429, "codeSends", "Too many codes were sent. Start again in a few minutes.")
+        wait = row["sent_at"] + CODE_RESEND_SECONDS - now
+        if wait > 0:
+            raise AccountError(429, "codeWait", "Wait a moment before asking for another code.", retryIn=wait)
+        limit_sends(row["email"], client_ip)
+        code = new_code()
+        with connect() as conn:
+            claimed = conn.execute(
+                "UPDATE codes SET code_hash = ?, attempts = 0, sends = sends + 1, sent_at = ?, expires_at = ? "
+                "WHERE ticket_hash = ? AND sends = ?",
+                (code_digest(ticket, code), now, now + CODE_SECONDS, key, row["sends"]),
+            ).rowcount
+        if not claimed:
+            raise AccountError(429, "codeWait", "Wait a moment before asking for another code.",
+                               retryIn=CODE_RESEND_SECONDS)
+        if row["purpose"] == "reset":
+            if row["user_id"] is not None:
+                send_code_later("reset", row["email"], code, row["language"])
+        else:
+            send_code(row["purpose"], row["email"], code, row["language"])
+        return respond(200, {"verify": code_payload(ticket, row["purpose"], row["email"])})
 
     if path == "/api/auth/login":
-        rate_limit(f"auth:{client_ip}")
         identifier = body.get("identifier") if isinstance(body.get("identifier"), str) else ""
         password = body.get("password") if isinstance(body.get("password"), str) else ""
         identifier = identifier.strip()
+        wrong = AccountError(401, "wrong", "Wrong email, username or password.")
         if not identifier or not password or len(identifier) > 254 or len(password) > 200:
-            raise AccountError(401, "wrong", "Wrong email or password.")
-        rate_limit(f"login:{identifier.casefold()}", limit=8, window=900)
+            raise wrong
         with connect() as conn:
             row = conn.execute(
                 "SELECT * FROM users WHERE email = ? OR username = ?", (identifier, identifier)
             ).fetchone()
-            if row is None:
-                burn_password_check(password)
-                raise AccountError(401, "wrong", "Wrong email or password.")
-            if not row["password_hash"]:
-                burn_password_check(password)
-                raise AccountError(401, "socialOnly", "This account uses Google or Apple sign-in. Use that button instead.")
-            if not verify_password(password, row["password_hash"]):
-                raise AccountError(401, "wrong", "Wrong email or password.")
+        # Only failures count, so logging in normally can never lock anyone out.
+        who = f"id{row['id']}" if row else identifier.casefold()
+        keys = ((f"login-ip:{client_ip}", 30, 600), (f"login:{who}:{client_ip}", 8, 900), (f"login:{who}", 40, 900))
+        for key, limit, window in keys:
+            rate_limit(key, limit, window)
+        try:
+            password.encode("utf-8")
+        except UnicodeEncodeError:
+            raise wrong
+        if row is None:
+            burn_password_check(password)
+            raise wrong
+        if not row["password_hash"]:
+            burn_password_check(password)
+            raise AccountError(
+                401, "socialOnly", "This account uses Google or Apple sign-in. Use that button instead."
+            )
+        if not verify_password(password, row["password_hash"]):
+            raise wrong
+        for key, _limit, _window in keys:
+            rate_forgive(key)
+        with connect() as conn:
             return signed_in(conn, row["id"], secure)
 
     if path in ("/api/auth/google", "/api/auth/apple"):
@@ -924,49 +1180,49 @@ def _route(method, path, query, body, cookie, client_ip, secure, base_url):
         return respond(200, {"ok": True}, cookie_header("", secure, max_age=0))
 
     if path == "/api/auth/forgot":
-        rate_limit(f"forgot:{client_ip}", limit=5, window=900)
-        if not mail_configured():
-            raise AccountError(503, "mail", "Password reset by email is not set up on this server yet.")
         email = clean_email(body.get("email"))
+        language = clean_language(body.get("language"))
+        limit_sends(email, client_ip)
         with connect() as conn:
-            row = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
-            if row:
-                token = secrets.token_urlsafe(32)
-                conn.execute(
-                    "INSERT INTO resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
-                    (token_hash(token), row["id"], int(time.time()) + RESET_SECONDS),
-                )
+            row = conn.execute("SELECT id, email FROM users WHERE email = ?", (email,)).fetchone()
+        # Unknown addresses get an identical answer, so this cannot reveal who has an account.
+        ticket, code = create_code("reset", email, language, user_id=row["id"] if row else None)
         if row:
-            link = f"{base_url.rstrip('/')}/#reset={token}"
-            try:
-                send_mail(
-                    email,
-                    "Reset your Aceminder password",
-                    "Someone asked to reset the password for your Aceminder account.\n\n"
-                    f"Open this link within one hour to choose a new password:\n{link}\n\n"
-                    "If this was not you, ignore this email. Your password stays the same.",
-                )
-            except (OSError, smtplib.SMTPException):
-                import traceback
-                traceback.print_exc()
-                raise AccountError(502, "generic", "The reset email could not be sent. Try again later.")
-        return respond(200, {"ok": True})
+            send_code_later("reset", row["email"], code, language)
+        return respond(200, {"verify": code_payload(ticket, "reset", email)})
 
     if path == "/api/auth/reset":
-        rate_limit(f"reset:{client_ip}", limit=10)
-        token = body.get("token") if isinstance(body.get("token"), str) else ""
+        # Check the new password first so a weak one does not use up a guess.
         password = clean_password(body.get("password"))
+        row = check_code(body.get("ticket"), body.get("code"), ("reset",), client_ip)
+        password_hash = hash_password(password)
         with connect() as conn:
-            row = conn.execute(
-                "SELECT user_id FROM resets WHERE token_hash = ? AND expires_at > ?",
-                (token_hash(token), int(time.time())),
+            use_code(conn, row)
+            owner = conn.execute(
+                "SELECT id FROM users WHERE id = ? AND email = ?", (row["user_id"], row["email"])
             ).fetchone()
-            if not token or not row:
-                raise AccountError(400, "reset", "This reset link is invalid or has expired.")
-            conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(password), row["user_id"]))
-            conn.execute("DELETE FROM resets WHERE user_id = ?", (row["user_id"],))
-            conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["user_id"],))
-            return signed_in(conn, row["user_id"], secure)
+            if owner is None:
+                raise AccountError(400, "codeExpired", "This code has expired. Ask for a new one.")
+            # Receiving the code proves the email; sign every other device out.
+            conn.execute(
+                "UPDATE users SET password_hash = ?, email_verified = 1 WHERE id = ?", (password_hash, owner["id"])
+            )
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (owner["id"],))
+            conn.execute("DELETE FROM codes WHERE user_id = ? AND purpose = 'reset'", (owner["id"],))
+            return signed_in(conn, owner["id"], secure)
+
+    if path == "/api/auth/verify-start" and user is not None:
+        if not user["email"] or user["email_verified"]:
+            raise AccountError(400, "alreadyVerified", "Your email is already confirmed.")
+        language = clean_language(body.get("language"))
+        limit_sends(user["email"], client_ip)
+        ticket, code = create_code("verify", user["email"], language, user_id=user["id"])
+        try:
+            send_code("verify", user["email"], code, language)
+        except AccountError:
+            drop_code(ticket)
+            raise
+        return respond(200, {"verify": code_payload(ticket, "verify", user["email"])})
 
     if user is None:
         raise AccountError(401, "required", "Sign in first.")

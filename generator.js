@@ -10,6 +10,8 @@ const INLINE_FILE_BYTES = 50 * 1024 * 1024;
 const INLINE_TOTAL_BYTES = 60 * 1024 * 1024;
 /* Gemini cannot read PDFs over 50 MB or 1000 pages, on any route. */
 const PDF_MAX_BYTES = 50 * 1024 * 1024;
+/* Bigger PDFs are cut down to chosen pages in the browser first (pdf-pages.js). */
+const PDF_SOURCE_MAX_BYTES = 500 * 1024 * 1024;
 /* Files API ceiling, still far above anything a revision sheet needs. */
 const MAX_FILE_BYTES = 1024 * 1024 * 1024;
 const MAX_FILES_BYTES = 1024 * 1024 * 1024;
@@ -576,9 +578,9 @@ function addFiles(incoming) {
       problems.push(t('err.fileEmpty', { name: file.name }));
       continue;
     }
-    if (mimeType === 'application/pdf' ? file.size > PDF_MAX_BYTES : file.size > MAX_FILE_BYTES) {
+    if (mimeType === 'application/pdf' ? file.size > PDF_SOURCE_MAX_BYTES : file.size > MAX_FILE_BYTES) {
       problems.push(mimeType === 'application/pdf'
-        ? t('err.pdfBig', { name: file.name, max: Math.round(PDF_MAX_BYTES / (1024 * 1024)) })
+        ? t('err.pdfBig', { name: file.name, max: Math.round(PDF_SOURCE_MAX_BYTES / (1024 * 1024)) })
         : t('err.fileBig', { name: file.name, max: Math.round(MAX_FILE_BYTES / (1024 * 1024)) }));
       continue;
     }
@@ -588,6 +590,10 @@ function addFiles(incoming) {
     if (selectedFiles.length >= MAX_FILES) {
       problems.push(t('err.fileCount', { max: MAX_FILES }));
       break;
+    }
+    if (mimeType === 'application/pdf' && file.size > PDF_MAX_BYTES) {
+      window.AcePdf.pick(file).then(smaller => { if (smaller) addFiles([smaller]); });
+      continue;
     }
     const total = selectedFiles.reduce((sum, existing) => sum + existing.size, 0) + file.size;
     if (total > MAX_FILES_BYTES) {

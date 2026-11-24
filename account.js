@@ -1,7 +1,7 @@
 'use strict';
 
 /* Aceminder accounts in the browser: sign up / log in (email, Google, Apple), usernames and
-   avatars, the profile sheet, password reset and the leaderboard. Sessions live in an
+   avatars, the profile sheet and the leaderboard (the sign-in page itself is auth.js). Sessions live in an
    HttpOnly cookie set by the server, so this file never sees or stores a password or token. */
 
 (function () {
@@ -11,19 +11,22 @@
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const state = {
-    config: { google: null, apple: null, email: true, passwordReset: false, avatars: ['🦉'] },
+    config: { google: null, apple: null, email: true, mail: 'console', avatars: ['🦉'] },
     user: null,
     loaded: false,
-    mode: 'signup',
     board: 'week',
     boardData: null,
-    pickAvatar: '🦉',
-    resetToken: ''
+    pickAvatar: '🦉'
   };
 
   window.AceAccount = {
     get user() { return state.user; },
     get loaded() { return state.loaded; },
+    get config() { return state.config; },
+    api: (path, body) => api(path, body),
+    checkUsername: (input, status) => checkUsername(input, status),
+    signedIn: data => signedIn(data),
+    setUser: (user, options) => setUser(user, options),
     openAuth: mode => openAuth(mode),
     openProfile: () => openProfile(),
     refreshBoard: () => loadBoard()
@@ -44,21 +47,33 @@
     try {
       response = await fetch(path, options);
     } catch {
-      const error = new Error(tr('err.unreachable'));
+      const error = new Error(tr('err.auth.offline'));
       error.code = 'offline';
       throw error;
     }
-    const data = await response.json().catch(() => ({}));
+    const data = await response.json().catch(() => null);
+    /* No account system behind this address: an old copy of the server, or another program. */
+    if (!data || (response.status === 404 && !data.code)) {
+      const error = new Error(tr(response.status >= 500 ? 'err.auth.generic' : 'err.auth.oldServer'));
+      error.code = 'oldServer';
+      error.status = response.status;
+      throw error;
+    }
     if (!response.ok) {
       const error = new Error(errorText(data));
       error.code = data.code || '';
       error.status = response.status;
+      error.data = data;
       throw error;
     }
     return data;
   }
 
   function errorText(data) {
+    if (data && data.code === 'rate' && data.retryIn) {
+      return tr('err.auth.rateIn', { m: Math.max(1, Math.ceil(data.retryIn / 60)) });
+    }
+    if (data && data.code === 'codeWrong') return tr('err.auth.codeWrong', { left: data.left });
     if (data && data.code) {
       const key = `err.auth.${data.code}`;
       const text = tr(key);
@@ -158,41 +173,9 @@
     paintAvatar($('#tab-me-avatar'), user || { avatar: '👤' });
   }
 
-  /* ---------- Sign up / log in ---------- */
+  /* ---------- Sign up / log in lives in auth.js ---------- */
 
-  const authDialog = $('#auth-dialog');
-  const authForm = $('#auth-form');
-  const authMessage = $('#auth-message');
-  const authUsername = $('#auth-username');
-  const authUsernameStatus = $('#auth-username-status');
-  const authEmail = $('#auth-email');
-  const authPassword = $('#auth-password');
-  const authSubmit = $('#auth-submit');
-
-  function setMode(mode) {
-    state.mode = mode === 'login' ? 'login' : 'signup';
-    authDialog.dataset.mode = state.mode;
-    authDialog.querySelectorAll('[data-auth-mode]').forEach(button => {
-      const active = button.dataset.authMode === state.mode;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
-    $('#auth-title').textContent = state.mode === 'signup' ? tr('acct.titleSignup') : tr('acct.titleLogin');
-    authSubmit.textContent = state.mode === 'signup' ? tr('acct.create') : tr('acct.submitLogin');
-    authEmail.type = state.mode === 'signup' ? 'email' : 'text';
-    authEmail.autocomplete = state.mode === 'signup' ? 'email' : 'username';
-    authPassword.autocomplete = state.mode === 'signup' ? 'new-password' : 'current-password';
-    authUsername.required = state.mode === 'signup';
-    showMessage(authMessage, '');
-    renderGoogleButton();
-  }
-
-  function openAuth(mode = 'signup') {
-    openDialog(authDialog);
-    setMode(mode);
-    renderSocial();
-    window.setTimeout(() => (state.mode === 'signup' ? authUsername : authEmail).focus({ preventScroll: true }), 80);
-  }
+  const openAuth = (mode = 'signup') => window.AceAuth?.open(mode);
 
   let checkTimer = 0;
   let checkSeq = 0;
@@ -223,168 +206,12 @@
     }, 350);
   }
 
-  authUsername?.addEventListener('input', () => checkUsername(authUsername, authUsernameStatus));
-
-  async function submitAuth(event) {
-    event.preventDefault();
-    showMessage(authMessage, '');
-    const email = authEmail.value.trim();
-    const password = authPassword.value;
-    if (state.mode === 'signup') {
-      if (!/^[\p{L}\p{N}][\p{L}\p{N}_.]{2,19}$/u.test(authUsername.value.trim())) {
-        showMessage(authMessage, tr('acct.invalid'), 'error');
-        authUsername.focus();
-        return;
-      }
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-        showMessage(authMessage, tr('err.auth.email'), 'error');
-        authEmail.focus();
-        return;
-      }
-      if (password.length < 8) {
-        showMessage(authMessage, tr('err.auth.password'), 'error');
-        authPassword.focus();
-        return;
-      }
-    } else if (!email || !password) {
-      showMessage(authMessage, tr('err.auth.wrong'), 'error');
-      return;
-    }
-
-    authSubmit.disabled = true;
-    authSubmit.classList.add('is-loading');
-    try {
-      const data = state.mode === 'signup'
-        ? await api('/api/auth/signup', {
-            username: authUsername.value.trim(),
-            email,
-            password,
-            avatar: state.config.avatars[Math.floor(Math.random() * state.config.avatars.length)]
-          })
-        : await api('/api/auth/login', { identifier: email, password });
-      signedIn(data);
-    } catch (error) {
-      showMessage(authMessage, error.message, 'error');
-      if (error.code === 'emailUsed') setMode('login');
-    } finally {
-      authSubmit.disabled = false;
-      authSubmit.classList.remove('is-loading');
-    }
-  }
-
+  /* Called by auth.js once the server has started a session. */
   function signedIn(data) {
-    authForm.reset();
-    authDialog.close();
     setUser(data.user);
     const name = data.user.username || '';
     toast(data.created ? tr('acct.welcome', { name }) : tr('acct.welcomeBack', { name }), '🦉');
     loadBoard();
-  }
-
-  authForm?.addEventListener('submit', submitAuth);
-  authDialog?.querySelectorAll('[data-auth-mode]').forEach(button => {
-    button.addEventListener('click', () => setMode(button.dataset.authMode));
-  });
-  $('#auth-close')?.addEventListener('click', () => authDialog.close());
-  $('#auth-key')?.addEventListener('click', () => {
-    authDialog.close();
-    $('#open-key-dialog')?.click();
-  });
-  $('#auth-forgot')?.addEventListener('click', () => {
-    if (!state.config.passwordReset) {
-      showMessage(authMessage, tr('err.auth.mail'), 'error');
-      return;
-    }
-    openReset('', authEmail.value.includes('@') ? authEmail.value.trim() : '');
-  });
-  closeOnBackdrop(authDialog);
-
-  /* ---------- Google and Apple ---------- */
-
-  let googleReady = false;
-  async function setupGoogle() {
-    if (!state.config.google || googleReady) return;
-    try {
-      await loadScript('https://accounts.google.com/gsi/client');
-      window.google.accounts.id.initialize({
-        client_id: state.config.google.clientId,
-        callback: response => socialSignIn('/api/auth/google', { credential: response.credential }),
-        ux_mode: 'popup',
-        auto_select: false,
-        itp_support: true
-      });
-      googleReady = true;
-      renderGoogleButton();
-    } catch {
-      googleReady = false;
-    }
-  }
-
-  function renderGoogleButton() {
-    const slot = $('#google-slot');
-    if (!slot || !googleReady || !authDialog.open) return;
-    slot.replaceChildren();
-    slot.hidden = false;
-    $('#google-fallback').hidden = true;
-    window.google.accounts.id.renderButton(slot, {
-      theme: 'filled_black',
-      size: 'large',
-      shape: 'pill',
-      text: state.mode === 'signup' ? 'signup_with' : 'signin_with',
-      logo_alignment: 'center',
-      width: Math.max(220, Math.min(400, Math.round(slot.parentElement.clientWidth))),
-      locale: window.AceI18n.lang
-    });
-  }
-
-  function renderSocial() {
-    const google = Boolean(state.config.google);
-    const apple = Boolean(state.config.apple);
-    const fallback = $('#google-fallback');
-    fallback.hidden = google && googleReady;
-    fallback.disabled = !google;
-    fallback.title = google ? '' : tr('acct.notSetUp');
-    $('#google-slot').hidden = !(google && googleReady);
-    const appleButton = $('#apple-button');
-    appleButton.disabled = !apple;
-    appleButton.title = apple ? '' : tr('acct.notSetUp');
-    $('#social-note').hidden = google && apple;
-    if (google) setupGoogle();
-  }
-
-  $('#google-fallback')?.addEventListener('click', async () => {
-    if (!state.config.google) return;
-    await setupGoogle();
-    if (googleReady) window.google.accounts.id.prompt();
-  });
-
-  $('#apple-button')?.addEventListener('click', async () => {
-    const config = state.config.apple;
-    if (!config) return;
-    try {
-      await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
-      window.AppleID.auth.init({
-        clientId: config.clientId,
-        scope: 'name email',
-        redirectURI: config.redirectUri || `${window.location.origin}/`,
-        usePopup: true
-      });
-      const result = await window.AppleID.auth.signIn();
-      const idToken = result && result.authorization && result.authorization.id_token;
-      if (idToken) await socialSignIn('/api/auth/apple', { idToken });
-    } catch (error) {
-      if (error && error.error === 'popup_closed_by_user') return;
-      showMessage(authMessage, tr('err.auth.provider'), 'error');
-    }
-  });
-
-  async function socialSignIn(path, body) {
-    showMessage(authMessage, tr('acct.checking'), 'ok');
-    try {
-      signedIn(await api(path, body));
-    } catch (error) {
-      showMessage(authMessage, error.message, 'error');
-    }
   }
 
   /* ---------- Username and avatar ---------- */
@@ -625,7 +452,7 @@
 
   async function openProfile() {
     if (!state.user) {
-      openAuth(state.loaded ? 'signup' : 'login');
+      openAuth('login');
       return;
     }
     renderProfile();
@@ -653,6 +480,7 @@
     /* Numeric dates: some browsers have no month names for Uzbek ("M11"). */
     const since = new Date(user.createdAt * 1000).toLocaleDateString(window.AceI18n.lang, { day: '2-digit', month: '2-digit', year: 'numeric' });
     $('#profile-since').textContent = tr('acct.memberSince', { date: since });
+    $('#profile-unverified').hidden = !user.email || user.emailVerified;
     $('#profile-level').textContent = String(p.level);
     $('#profile-xp').textContent = p.xp.toLocaleString(window.AceI18n.lang);
     $('#profile-streak').textContent = String(p.streak);
@@ -693,6 +521,19 @@
   }
 
   $('#profile-close')?.addEventListener('click', () => profileDialog.close());
+  $('#profile-verify')?.addEventListener('click', async () => {
+    const button = $('#profile-verify');
+    button.disabled = true;
+    try {
+      const data = await api('/api/auth/verify-start', { language: window.AceI18n.apiLanguage() });
+      profileDialog.close();
+      window.AceAuth?.openCode(data.verify);
+    } catch (error) {
+      toast(error.message, '⚠️');
+    } finally {
+      button.disabled = false;
+    }
+  });
   $('#profile-edit')?.addEventListener('click', () => openUsername(false));
   $('#profile-key')?.addEventListener('click', () => {
     profileDialog.close();
@@ -722,46 +563,6 @@
     }
   });
   closeOnBackdrop(profileDialog);
-
-  /* ---------- Password reset ---------- */
-
-  const resetDialog = $('#reset-dialog');
-  const resetMessage = $('#reset-message');
-
-  function openReset(token, email = '') {
-    state.resetToken = token;
-    resetDialog.dataset.step = token ? 'set' : 'request';
-    $('#reset-sub').textContent = token ? tr('acct.resetSetSub') : tr('acct.resetSub');
-    $('#reset-submit').textContent = token ? tr('acct.setPassword') : tr('acct.sendLink');
-    $('#reset-email').value = email;
-    $('#reset-password').value = '';
-    showMessage(resetMessage, '');
-    openDialog(resetDialog);
-  }
-
-  $('#reset-form')?.addEventListener('submit', async event => {
-    event.preventDefault();
-    const submit = $('#reset-submit');
-    submit.disabled = true;
-    try {
-      if (state.resetToken) {
-        const data = await api('/api/auth/reset', { token: state.resetToken, password: $('#reset-password').value });
-        state.resetToken = '';
-        resetDialog.close();
-        setUser(data.user);
-        toast(tr('acct.passwordChanged'), '🔐');
-      } else {
-        await api('/api/auth/forgot', { email: $('#reset-email').value.trim() });
-        showMessage(resetMessage, tr('acct.linkSent'), 'ok');
-      }
-    } catch (error) {
-      showMessage(resetMessage, error.message, 'error');
-    } finally {
-      submit.disabled = false;
-    }
-  });
-  $('#reset-close')?.addEventListener('click', () => resetDialog.close());
-  closeOnBackdrop(resetDialog);
 
   /* ---------- Leaderboard ---------- */
 
@@ -888,7 +689,6 @@
   window.addEventListener('aceminder:language', () => {
     renderHeader();
     renderBoard();
-    if (authDialog?.open) setMode(state.mode);
     if (profileDialog?.open) renderProfile();
   });
 
@@ -902,10 +702,5 @@
     await loadConfig();
     await loadMe();
     loadBoard();
-    const match = /^#reset=([A-Za-z0-9_-]{20,100})$/.exec(window.location.hash);
-    if (match) {
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      openReset(match[1]);
-    }
   });
 })();

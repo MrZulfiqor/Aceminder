@@ -23,11 +23,14 @@
   <script src="i18n-game.js" defer></script>
   <script src="i18n-account.js" defer></script>
   <script src="i18n-owl.js" defer></script>
+  <script src="i18n-auth.js" defer></script>
   <script src="owl.js" defer></script>
+  <script src="pdf-pages.js" defer></script>
   <script src="generator.js" defer></script>
   <script src="game.js" defer></script>
   <script src="achievements.js" defer></script>
   <script src="account.js" defer></script>
+  <script src="auth.js" defer></script>
 </head>
 <body>
   <div class="backdrop" aria-hidden="true">
@@ -219,8 +222,8 @@
               <div class="upload-block">
                 <div class="upload-heading">
                   <span class="field-label" data-i18n="form.files">PDF or screenshot</span>
-                  <span class="field-hint only-desktop" data-i18n="form.filesHint">Up to 4 files · PDFs to 50 MB · images to 1 GB · paste with Ctrl+V</span>
-                  <span class="field-hint only-phone" data-i18n="form.filesHintPhone">Up to 4 files · PDFs to 50 MB</span>
+                  <span class="field-hint only-desktop" data-i18n="form.filesHint">Up to 4 files · PDFs to 500 MB · images to 1 GB · paste with Ctrl+V</span>
+                  <span class="field-hint only-phone" data-i18n="form.filesHintPhone">Up to 4 files · PDFs to 500 MB</span>
                 </div>
                 <label class="dropzone" id="dropzone" for="source-files">
                   <span class="dropzone-icon" aria-hidden="true">
@@ -575,55 +578,121 @@
     </form>
   </dialog>
 
-  <dialog class="key-dialog account-dialog" id="auth-dialog" aria-labelledby="auth-title" data-mode="signup">
-    <div class="key-dialog-panel">
-      <div class="key-dialog-head">
-        <div>
-          <p class="eyebrow" data-i18n="acct.eyebrow">Aceminder account</p>
-          <h2 id="auth-title">Create your account</h2>
+  <dialog class="auth-page" id="auth-page" aria-labelledby="auth-title" data-view="signup">
+    <div class="auth-shell">
+      <aside class="auth-side">
+        <span class="auth-brand"><img src="Aceminder.png" alt="" width="40" height="40">Aceminder</span>
+        <div class="auth-owl" id="auth-owl" aria-hidden="true"></div>
+        <div class="auth-perks">
+          <h3 data-i18n="auth.perksTitle">Study smarter with Ace</h3>
+          <ul>
+            <li><span aria-hidden="true">⚡</span><span data-i18n="auth.perk1">Keep your XP, streak and achievements on every device</span></li>
+            <li><span aria-hidden="true">🏆</span><span data-i18n="auth.perk2">Compete on the weekly leaderboard</span></li>
+            <li><span aria-hidden="true">🔒</span><span data-i18n="auth.perk3">Your email stays private</span></li>
+          </ul>
         </div>
-        <button class="key-dialog-close" id="auth-close" type="button" data-i18n-aria="acct.close" aria-label="Close">×</button>
-      </div>
-      <p class="key-dialog-intro" data-i18n="acct.sub">Save your XP, keep your streak on every device and climb the leaderboard.</p>
-      <div class="auth-switch" role="tablist">
-        <button type="button" role="tab" data-auth-mode="signup" class="is-active" data-i18n="acct.tabSignup">Sign up</button>
-        <button type="button" role="tab" data-auth-mode="login" data-i18n="acct.tabLogin">Log in</button>
-      </div>
-      <div class="social-buttons">
-        <div class="google-slot" id="google-slot" hidden></div>
-        <button class="social-button social-button--google" id="google-fallback" type="button">
-          <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
-          <span data-i18n="acct.google">Continue with Google</span>
-        </button>
-        <button class="social-button social-button--apple" id="apple-button" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.1-1.2 2.9-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.4-1-2.4-3.9ZM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4Z"/></svg>
-          <span data-i18n="acct.apple">Continue with Apple</span>
-        </button>
-        <p class="social-note" id="social-note" hidden data-i18n="acct.notSetUp">Google and Apple sign-in are not set up on this server yet.</p>
-      </div>
-      <div class="auth-divider"><span data-i18n="acct.or">or use email</span></div>
-      <form class="auth-form" id="auth-form" novalidate>
-        <label class="key-field signup-only" for="auth-username">
-          <span data-i18n="acct.username">Username</span>
-          <input id="auth-username" type="text" maxlength="20" autocomplete="nickname" spellcheck="false" autocapitalize="off">
-          <span class="name-status" id="auth-username-status" data-i18n="acct.usernameHint">3–20 letters, numbers, _ or .</span>
-        </label>
-        <label class="key-field" for="auth-email">
-          <span class="signup-only" data-i18n="acct.email">Email</span>
-          <span class="login-only" data-i18n="acct.emailOrName">Email or username</span>
-          <input id="auth-email" type="email" maxlength="254" autocomplete="email" spellcheck="false" autocapitalize="off">
-        </label>
-        <label class="key-field" for="auth-password">
-          <span data-i18n="acct.password">Password</span>
-          <input id="auth-password" type="password" maxlength="200" autocomplete="new-password">
-          <span class="name-status signup-only" data-i18n="acct.passwordHint">At least 8 characters</span>
-        </label>
-        <p class="key-message" id="auth-message" role="status" hidden></p>
-        <button class="button button--gold button--lg auth-submit" id="auth-submit" type="submit">Create account</button>
-        <button class="link-button login-only" id="auth-forgot" type="button" data-i18n="acct.forgot">Forgot password?</button>
-      </form>
-      <p class="key-privacy" data-i18n="acct.privacy">Only your username, avatar and XP appear on the leaderboard. Your email is never shown.</p>
-      <button class="link-button" id="auth-key" type="button" data-i18n="acct.geminiKey">Gemini API key</button>
+      </aside>
+
+      <section class="auth-main">
+        <div class="auth-top">
+          <button class="link-button auth-back" id="auth-back" type="button"></button>
+          <button class="key-dialog-close" id="auth-close" type="button" data-i18n-aria="acct.close" aria-label="Close">×</button>
+        </div>
+        <div class="auth-body">
+          <h2 id="auth-title" tabindex="-1">Create your account</h2>
+          <p class="auth-sub" id="auth-sub"></p>
+
+          <div class="auth-switch" data-for="signup login" role="group">
+            <button type="button" data-auth-view="signup" data-i18n="acct.tabSignup">Sign up</button>
+            <button type="button" data-auth-view="login" data-i18n="acct.tabLogin">Log in</button>
+          </div>
+
+          <div class="auth-alert" id="auth-alert" role="alert" hidden>
+            <p id="auth-alert-text"></p>
+            <button class="link-button" id="auth-alert-action" type="button" hidden></button>
+          </div>
+
+          <form class="auth-form" id="auth-form" data-for="signup login" novalidate>
+            <div class="auth-field" data-for="signup">
+              <label for="auth-username" data-i18n="acct.username">Username</label>
+              <input id="auth-username" name="nickname" type="text" maxlength="20" autocomplete="off" spellcheck="false" autocapitalize="off" aria-describedby="auth-username-status">
+              <span class="name-status" id="auth-username-status" data-i18n="acct.usernameHint">3–20 letters, numbers, _ or .</span>
+            </div>
+            <div class="auth-field">
+              <label for="auth-email" id="auth-email-label">Email</label>
+              <input id="auth-email" name="email" type="email" maxlength="254" autocomplete="username" spellcheck="false" autocapitalize="off" aria-describedby="auth-email-status">
+              <span class="name-status" id="auth-email-status"></span>
+              <button class="link-button auth-suggest" id="auth-suggest" type="button" hidden></button>
+            </div>
+            <div class="auth-field">
+              <div class="auth-label-row">
+                <label for="auth-password" data-i18n="acct.password">Password</label>
+                <button class="link-button" id="auth-forgot" type="button" data-for="login" data-i18n="acct.forgot">Forgot password?</button>
+              </div>
+              <span class="auth-password">
+                <input id="auth-password" name="password" type="password" maxlength="200" autocomplete="new-password" aria-describedby="auth-password-status">
+                <button class="auth-reveal" type="button" data-reveal-for="auth-password"></button>
+              </span>
+              <span class="auth-meter" data-meter-for="auth-password" data-for="signup" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+              <span class="name-status" id="auth-password-status"></span>
+            </div>
+            <button class="button button--gold button--lg auth-submit" id="auth-submit" type="submit"><span class="spinner" aria-hidden="true"></span><span id="auth-submit-label">Create account</span></button>
+          </form>
+
+          <form class="auth-form" id="auth-forgot-form" data-for="forgot" novalidate>
+            <div class="auth-field">
+              <label for="auth-forgot-email" data-i18n="acct.email">Email</label>
+              <input id="auth-forgot-email" name="email" type="email" maxlength="254" autocomplete="username" spellcheck="false" autocapitalize="off" aria-describedby="auth-forgot-status">
+              <span class="name-status" id="auth-forgot-status"></span>
+            </div>
+            <button class="button button--gold button--lg auth-submit" type="submit"><span class="spinner" aria-hidden="true"></span><span data-i18n="auth.sendCode">Send code</span></button>
+          </form>
+
+          <form class="auth-form" id="auth-code-form" data-for="code" novalidate>
+            <p class="auth-note" id="auth-console-note" data-i18n="auth.consoleNote" hidden>Email sending isn’t set up on this server yet, so the code is shown in the server window.</p>
+            <div class="auth-field">
+              <label for="auth-code" data-i18n="auth.code">6-digit code</label>
+              <span class="auth-code" id="auth-code-boxes">
+                <span class="auth-code-cells" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                <input id="auth-code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="one-time-code" spellcheck="false" aria-describedby="auth-code-status">
+              </span>
+              <span class="name-status" id="auth-code-status"></span>
+            </div>
+            <div class="auth-field" id="auth-new-field" hidden>
+              <label for="auth-new-password" data-i18n="acct.newPassword">New password</label>
+              <span class="auth-password">
+                <input id="auth-new-password" name="new-password" type="password" maxlength="200" autocomplete="new-password" aria-describedby="auth-new-status">
+                <button class="auth-reveal" type="button" data-reveal-for="auth-new-password"></button>
+              </span>
+              <span class="auth-meter" data-meter-for="auth-new-password" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+              <span class="name-status" id="auth-new-status"></span>
+            </div>
+            <button class="button button--gold button--lg auth-submit" type="submit"><span class="spinner" aria-hidden="true"></span><span id="auth-code-label">Confirm</span></button>
+            <div class="auth-code-tools">
+              <button class="link-button" id="auth-resend" type="button"></button>
+              <a class="link-button" id="auth-gmail" href="https://mail.google.com/" target="_blank" rel="noopener noreferrer" data-i18n="auth.openGmail" hidden>Open Gmail</a>
+              <button class="link-button" id="auth-skip" type="button" data-i18n="auth.skip" hidden>Skip for now</button>
+            </div>
+          </form>
+
+          <div class="auth-social" data-for="signup login">
+            <div class="auth-divider"><span data-i18n="auth.or">or</span></div>
+            <div class="social-buttons">
+              <div class="google-slot" id="google-slot" hidden></div>
+              <button class="social-button social-button--google" id="google-fallback" type="button">
+                <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+                <span data-i18n="acct.google">Continue with Google</span>
+              </button>
+              <button class="social-button social-button--apple" id="apple-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.1-1.2 2.9-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.4-1-2.4-3.9ZM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4Z"/></svg>
+                <span data-i18n="acct.apple">Continue with Apple</span>
+              </button>
+              <p class="social-note" id="social-note" hidden></p>
+            </div>
+            <p class="auth-privacy" data-for="signup" data-i18n="acct.privacy">Only your username, avatar and XP appear on the leaderboard. Your email is never shown.</p>
+          </div>
+        </div>
+      </section>
     </div>
   </dialog>
 
@@ -690,6 +759,7 @@
             <h2 id="profile-name">—</h2>
             <p id="profile-email"></p>
             <p id="profile-since"></p>
+            <p class="profile-unverified" id="profile-unverified" hidden><span data-i18n="auth.unverified">Email not confirmed</span> <button class="link-button" id="profile-verify" type="button" data-i18n="auth.verifyNow">Confirm now</button></p>
           </div>
         </div>
         <button class="key-dialog-close" id="profile-close" type="button" data-i18n-aria="acct.close" aria-label="Close">×</button>
@@ -713,27 +783,20 @@
     </div>
   </dialog>
 
-  <dialog class="key-dialog account-dialog" id="reset-dialog" aria-labelledby="reset-title" data-step="request">
-    <form class="key-dialog-panel" id="reset-form" novalidate>
-      <div class="key-dialog-head">
-        <div>
-          <p class="eyebrow" data-i18n="acct.eyebrow">Aceminder account</p>
-          <h2 id="reset-title" data-i18n="acct.resetTitle">Reset your password</h2>
-        </div>
-        <button class="key-dialog-close" id="reset-close" type="button" data-i18n-aria="acct.close" aria-label="Close">×</button>
+  <dialog class="key-dialog account-dialog" id="pdf-dialog" aria-labelledby="pdf-title">
+    <form class="key-dialog-panel" id="pdf-form" novalidate>
+      <h2 id="pdf-title" data-i18n="pdf.title">Choose pages</h2>
+      <p class="key-dialog-intro" id="pdf-sub" style="overflow-wrap:anywhere"></p>
+      <label class="key-field" for="pdf-pages">
+        <span data-i18n="pdf.label">Pages, for example 1-40, 55</span>
+        <input id="pdf-pages" type="text" maxlength="200" autocomplete="off">
+      </label>
+      <div class="xp-bar" aria-hidden="true"><span class="xp-bar-fill" id="pdf-bar"></span></div>
+      <p class="name-status" id="pdf-status" role="status"></p>
+      <div class="key-actions">
+        <button class="button button--gold" id="pdf-use" type="submit" data-i18n="pdf.use">Use these pages</button>
+        <button class="button button--ghost" id="pdf-cancel" type="button" data-i18n="pdf.cancel">Cancel</button>
       </div>
-      <p class="key-dialog-intro" id="reset-sub"></p>
-      <label class="key-field reset-request" for="reset-email">
-        <span data-i18n="acct.email">Email</span>
-        <input id="reset-email" type="email" maxlength="254" autocomplete="email">
-      </label>
-      <label class="key-field reset-set" for="reset-password">
-        <span data-i18n="acct.newPassword">New password</span>
-        <input id="reset-password" type="password" maxlength="200" autocomplete="new-password">
-        <span class="name-status" data-i18n="acct.passwordHint">At least 8 characters</span>
-      </label>
-      <p class="key-message" id="reset-message" role="status" hidden></p>
-      <button class="button button--gold button--lg" id="reset-submit" type="submit">Send reset link</button>
     </form>
   </dialog>
 

@@ -59,7 +59,7 @@
     'tab.key': 'Key',
     'form.dropTitlePhone': 'Tap to add a PDF or photo',
     'form.dropHintPhone': 'Choose a file or snap your notes with the camera · PDF, PNG, JPG, WebP, GIF',
-    'form.filesHintPhone': 'Up to 4 files · PDFs to 50 MB'
+    'form.filesHintPhone': 'Up to 4 files · PDFs to 500 MB'
   });
 
   add('uz', {
@@ -113,7 +113,7 @@
     'tab.key': 'Kalit',
     'form.dropTitlePhone': 'PDF yoki rasm qo‘shish uchun bosing',
     'form.dropHintPhone': 'Fayl tanlang yoki izohlaringizni kamerada suratga oling · PDF, PNG, JPG, WebP, GIF',
-    'form.filesHintPhone': 'Ko‘pi bilan 4 ta fayl · PDF 50 MB gacha'
+    'form.filesHintPhone': 'Ko‘pi bilan 4 ta fayl · PDF 500 MB gacha'
   });
 
   add('ru', {
@@ -167,7 +167,7 @@
     'tab.key': 'Ключ',
     'form.dropTitlePhone': 'Нажмите, чтобы добавить PDF или фото',
     'form.dropHintPhone': 'Выберите файл или сфотографируйте конспект · PDF, PNG, JPG, WebP, GIF',
-    'form.filesHintPhone': 'До 4 файлов · PDF до 50 МБ'
+    'form.filesHintPhone': 'До 4 файлов · PDF до 500 МБ'
   });
 
   add('es', {
@@ -221,7 +221,7 @@
     'tab.key': 'Clave',
     'form.dropTitlePhone': 'Toca para añadir un PDF o una foto',
     'form.dropHintPhone': 'Elige un archivo o fotografía tus apuntes · PDF, PNG, JPG, WebP, GIF',
-    'form.filesHintPhone': 'Hasta 4 archivos · PDF de hasta 50 MB'
+    'form.filesHintPhone': 'Hasta 4 archivos · PDF de hasta 500 MB'
   });
 
   add('de', {
@@ -275,7 +275,7 @@
     'tab.key': 'Schlüssel',
     'form.dropTitlePhone': 'Tippe, um ein PDF oder Foto hinzuzufügen',
     'form.dropHintPhone': 'Datei wählen oder Notizen mit der Kamera fotografieren · PDF, PNG, JPG, WebP, GIF',
-    'form.filesHintPhone': 'Bis zu 4 Dateien · PDFs bis 50 MB'
+    'form.filesHintPhone': 'Bis zu 4 Dateien · PDFs bis 500 MB'
   });
 
   add('fr', {
@@ -329,6 +329,6 @@
     'tab.key': 'Clé',
     'form.dropTitlePhone': 'Touche pour ajouter un PDF ou une photo',
     'form.dropHintPhone': 'Choisis un fichier ou photographie tes notes · PDF, PNG, JPG, WebP, GIF',
-    'form.filesHintPhone': 'Jusqu’à 4 fichiers · PDF jusqu’à 50 Mo'
+    'form.filesHintPhone': 'Jusqu’à 4 fichiers · PDF jusqu’à 500 Mo'
   });
 })();
